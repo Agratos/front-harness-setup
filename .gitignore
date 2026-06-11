@@ -1,0 +1,13 @@
+# 의존성·빌드 산출물
+node_modules/
+dist/
+.yarn/cache/
+.yarn/install-state.gz
+.yarn/unplugged/
+
+# 환경 변수 (Notion 토큰 등)
+.env
+
+# 에디터·세션 부산물
+.omc/
+*.local
