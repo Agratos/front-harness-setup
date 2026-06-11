@@ -1,0 +1,2 @@
+{"checkpointToken":null,"phaseSeq":null,"stepIdx":null,"stepLabel":"01-demo","phase":"merge","outcome":"demo","detail":"데모 git-flow(임시 repo): seed→start→merge 완료, main 커밋 3개"}
+{"checkpointToken":null,"phaseSeq":null,"stepIdx":null,"stepLabel":"01-demo","phase":"merge","outcome":"demo","detail":"데모 loop(임시 cwd): 1-step 완주, 실행 페이즈=decompose>design>implement>verify>evaluate>debate>merge"}

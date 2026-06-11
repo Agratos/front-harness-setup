@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gates:
+    name: gates + self-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack (yarn 4 berry)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # ── 결정적 게이트 4종 (done-gate 와 동일) ─────────────────────────
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Arch boundary check
+        run: node scripts/check-arch.js
+
+      - name: Test
+        run: yarn test --run
+
+      # ── 하네스 자가검증 7종 ──────────────────────────────────────────
+      - name: Self-tests
+        run: |
+          node scripts/lib/state.selftest.mjs
+          node scripts/git-flow.selftest.mjs
+          node scripts/done-gate.selftest.mjs
+          node scripts/loop.selftest.mjs
+          node scripts/log.selftest.mjs
+          node scripts/eval.selftest.mjs
+          node scripts/resume.selftest.mjs
