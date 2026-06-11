@@ -7,7 +7,7 @@
 - Rounds: 3 (총 12질문, 전 답변 원문 수록)
 - 이전 사양서: `harness-setup-backup-20260611/.omc/specs/deep-interview-harness-setup.md`
 - 백업: `C:\Users\POINT-I\Desktop\study\harness-setup-backup-20260611` (146 파일, 삭제 전 전체 보존)
-- Status: 사양 확정 — **구현 착수는 사용자 승인 대기**
+- Status: 사양 확정 — **구현 착수 승인됨** (2026-06-11, 사용자 발언 원문: "어 부탁해")
 
 ## 출처 표기 규칙
 
