@@ -1,0 +1,16 @@
+{
+	"extends": "./tsconfig.app.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"],
+			"@app/*": ["src/app/*"],
+			"@pages/*": ["src/pages/*"],
+			"@widgets/*": ["src/widgets/*"],
+			"@features/*": ["src/features/*"],
+			"@entities/*": ["src/entities/*"],
+			"@shared/*": ["src/shared/*"]
+		}
+	},
+	"typeRoots": ["./node_modules/@types"]
+}
