@@ -7,19 +7,21 @@
 
 ## 현재 상태
 
-### 🔵 진행 중 — Step 5: 고객 평가 + Notion 미러 (커밋 직전)
-- **브랜치**: `step/05-eval`
-- **담당**: 메인 재구축 세션
-- **상태**: eval/rubric/notion/teardown 계승, eval selftest PASS, **실 Playwright 평가 1회 완료
-  (eval-0001: 종합 100 / major 0, 포트 8000 teardown 검증)**. 루브릭에 가변 페르소나 §0 추가.
-- **완료된 선행 단계**:
-  - Step 1 툴체인 시드 — main 머지 (`965fdfd`)
-  - Step 2 FSD 규약 + 실재 예시 슬라이스 — main 머지 (`5d48235`)
-  - Step 3 협의체 9역할 + v2 정책 (5회+투표·캐스팅보트·가변 페르소나) — main 머지 (`efe40e8`)
-  - Step 4 드라이버·done-gate·git-flow + self-test 6종 PASS — main 머지 (`f7ca24c`)
-- **다음 할 일**: Step 6 — README/AGENTS/usage 작성(9역할·5회+투표 반영), demo.mjs 계승·실행,
-  전체 게이트+self-test 최종 재검증, PROGRESS 갱신, 푸시.
-- **마지막 갱신**: 2026-06-11T02:33Z (기록자: 메인 재구축 세션)
+### 🟢 완료 — v2 재구축 (Step 1~6 전체)
+- **사양서**: `docs/spec/interview-2026-06-11.md` (사용자 직접 인터뷰 3라운드, 승인 기록 보유)
+- **단계별 main 머지**:
+  - Step 1 툴체인 시드 (스모크 테스트, passWithNoTests 제거) — `965fdfd`
+  - Step 2 FSD 규약 + 실재 예시 슬라이스 (entities/example·features/example-list·pages/home) — `5d48235`
+  - Step 3 협의체 9역할 + v2 정책 (5회+투표·캐스팅보트·가변 페르소나) — `efe40e8`
+  - Step 4 드라이버·done-gate·git-flow + self-test 6종 — `f7ca24c`
+  - Step 5 고객 평가(Playwright)·루브릭(가변 페르소나 §0)·Notion 미러 — `7bdb250`
+  - Step 6 통합 데모 PASS + README/AGENTS/usage v2 정합 + CI 워크플로 — (이 커밋)
+- **최종 검증**: 게이트 4종 green (typecheck 0 / lint 0 / test 5 passed / check-arch 0위반)
+  + self-test 7종 PASS (state/git-flow/done-gate/loop/log/resume/eval) + demo PASS
+  + 실 평가 eval-0001 종합 100 / major 0 / teardown 검증
+- **남은 후속(선택)**: ① 노션 대시보드 예시 데이터 → 실데이터 교체(노션 세션 항목 참조)
+  ② 제품 빌드 시 mantine·react-router provider 추가 ③ main 브랜치 보호 설정(GitHub)
+- **마지막 갱신**: 2026-06-11T02:40Z (기록자: 메인 재구축 세션)
 
 ### 🟢 완료 — 노션 대시보드 개편
 - **페이지**: https://app.notion.com/p/Harness-Inc-37305d7cde4780ecabfeda0bddebf85b
