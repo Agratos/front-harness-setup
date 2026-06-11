@@ -1,0 +1,44 @@
+{
+	"compilerOptions": {
+		// 출력 타겟: 안정성 우선 (필요 시 ESNext로 상향 가능)
+		"target": "ES2022",
+
+		// 런타임/DOM 타입
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+		// ESM + 번들러 시대 기본
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"noEmit": true,
+
+		// 클래스 필드/ESM 정확도
+		"useDefineForClassFields": true,
+		"verbatimModuleSyntax": true,
+		"moduleDetection": "force",
+
+		// 번들러 친화 옵션
+		"isolatedModules": true,
+		"resolveJsonModule": true,
+
+		// CJS interop: 우선 기본만 허용, 필요 시 esModuleInterop 도입
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+
+		// 안정성/성능
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"allowJs": false,
+
+		// 엄격 모드 + 린팅(원하시면 유지)
+		"strict": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noUncheckedSideEffectImports": true,
+
+		// 상황에 따라
+		"allowImportingTsExtensions": true // .ts 확장자 임포트가 실제로 필요할 때만
+	},
+	"include": ["src"]
+}

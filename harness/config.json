@@ -1,0 +1,11 @@
+{
+	"useGit": true,
+	"useMcp": true,
+	"mcpServers": ["figma", "notion"],
+	"skipGitFlow": false,
+	"preflight": {
+		"ranAt": "2026-06-09T07:17:28.963Z",
+		"gitInitDone": true,
+		"gitPresentBefore": false
+	}
+}
