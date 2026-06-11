@@ -7,16 +7,19 @@
 
 ## 현재 상태
 
-### 🔵 진행 중 — Step 4: 루프 드라이버·done-gate·git-flow
-- **브랜치**: `step/04-driver`
+### 🔵 진행 중 — Step 5: 고객 평가 + Notion 미러 (커밋 직전)
+- **브랜치**: `step/05-eval`
 - **담당**: 메인 재구축 세션
-- **상태**: 백업에서 scripts 계승 완료 (loop/done-gate/git-flow/state/log + selftest 6종), **self-test 6종 전부 PASS**. 재작업 한도는 스크립트 비하드코딩(오케스트레이터 정책) 확인. 커밋·병합 직전.
+- **상태**: eval/rubric/notion/teardown 계승, eval selftest PASS, **실 Playwright 평가 1회 완료
+  (eval-0001: 종합 100 / major 0, 포트 8000 teardown 검증)**. 루브릭에 가변 페르소나 §0 추가.
 - **완료된 선행 단계**:
   - Step 1 툴체인 시드 — main 머지 (`965fdfd`)
   - Step 2 FSD 규약 + 실재 예시 슬라이스 — main 머지 (`5d48235`)
   - Step 3 협의체 9역할 + v2 정책 (5회+투표·캐스팅보트·가변 페르소나) — main 머지 (`efe40e8`)
-- **다음 할 일**: Step 5 — 백업에서 `scripts/eval-playwright.mjs`·`eval.selftest.mjs`·`scripts/lib/{rubric,notion,teardown}.mjs`·`docs/eval-rubric.md`·`docs/notion-dashboard.md` 계승, 가변 페르소나 연동·포트 8000 확인, eval 실 실행 + teardown 검증.
-- **마지막 갱신**: 2026-06-11T02:27Z (기록자: 메인 재구축 세션)
+  - Step 4 드라이버·done-gate·git-flow + self-test 6종 PASS — main 머지 (`f7ca24c`)
+- **다음 할 일**: Step 6 — README/AGENTS/usage 작성(9역할·5회+투표 반영), demo.mjs 계승·실행,
+  전체 게이트+self-test 최종 재검증, PROGRESS 갱신, 푸시.
+- **마지막 갱신**: 2026-06-11T02:33Z (기록자: 메인 재구축 세션)
 
 ### 🟢 완료 — 노션 대시보드 개편
 - **페이지**: https://app.notion.com/p/Harness-Inc-37305d7cde4780ecabfeda0bddebf85b
