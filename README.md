@@ -82,7 +82,7 @@ harness-setup/
    ├─ pages/               # 실재 예시: home (feature 조립)
    ├─ widgets/             # (비어 있음) docs/fsd/widgets.md 규약대로 작성
    ├─ features/            # 실재 예시: example-list (엔티티 훅 소비)
-   ├─ entities/            # 실재 예시: example (DTO↔Mapper↔Types + mapper 단위테스트)
+   ├─ entities/            # 실재 예시: example (model/ 아래 DTO↔Mapper↔Types + mapper 단위테스트 — scms-ems 방식)
    └─ shared/              # lib(api·react-query·zustand 인프라 헬퍼)
 ```
 

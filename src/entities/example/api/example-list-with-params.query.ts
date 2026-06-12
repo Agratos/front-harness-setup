@@ -1,9 +1,9 @@
 import { selectResult } from '@/shared/lib/api/response-adapter';
 import { useQueryApi } from '@/shared/lib/react-query/use-query-api';
 
-import type { ExampleListPagedResponseDto, ExampleListParamsDto } from '../dto/example.dto';
-import { mapExampleItemDtoToExampleItem, mapExampleListParamsToDto } from '../mapper/example.mapper';
-import type { ExampleListParams, ExampleListResult } from '../types/example.types';
+import type { ExampleListPagedResponseDto, ExampleListParamsDto } from '../model/dto/example-list.dto';
+import { mapExampleItemDtoToExampleItem, mapExampleListParamsToDto } from '../model/mapper/example-list.mapper';
+import type { ExampleListParams, ExampleListResult } from '../model/types/example-list.types';
 
 /**
  * 파라미터(페이지·필터)가 호출마다 바뀌는 list — `useQueryApi` 사용.

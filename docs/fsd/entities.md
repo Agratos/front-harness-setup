@@ -15,25 +15,32 @@
 
 ## 2. 슬라이스 구조 (세그먼트)
 
-dto/·types/·mapper/ 를 **슬라이스 최상위**에 둡니다 (참조 프로젝트 default-setup 의 표준 방식.
-예전 `model/` 단일 폴더 방식은 폐기되었습니다).
+dto/·types/·mapper/·store/ 를 **`model/` 세그먼트 아래**에 묶고, `api/`·`lib/` 는 슬라이스
+최상위에 둡니다 (참조 프로젝트 **scms-ems** 의 표준 방식 — 2026-06-12 default-setup 최상위
+배치 방식에서 전환). dto/mapper/types 파일은 엔티티 단위 1파일이 아니라 **API 동작 단위**로
+분리합니다 (`<slice>-list.dto.ts`, `<slice>-update.types.ts` …).
 
 ```
 src/entities/<slice>/
-├── dto/
-│   └── <name>.dto.ts          # 서버 원본 (snake_case, 약어, Y/N 그대로) + 응답 envelope + 입력 DTO
-├── types/
-│   └── <name>.types.ts        # 클라이언트 형태 (camelCase, boolean, number, ISO, 풀네임)
-├── mapper/
-│   └── <name>.mapper.ts       # map<Dto>To<Type>() / map<Type>To<Dto>() 순수 함수 — DTO↔Type 단일 통로
 ├── api/
-│   ├── <name>-list.query.ts                # queryApi (등록형 — 무파라미터/고정 파라미터)
-│   ├── <name>-list-with-params.query.ts    # useQueryApi (호출형 — 동적 params)
-│   └── <name>-update.mutation.ts           # useMutationApi (생성·수정·삭제)
-├── store/                     # 도메인 상태(Zustand) — stateful 도메인만 (선택)
+│   ├── <slice>-list.query.ts                # queryApi (등록형 — 무파라미터/고정 파라미터)
+│   ├── <slice>-list-with-params.query.ts    # useQueryApi (호출형 — 동적 params)
+│   └── <slice>-update.mutation.ts           # useMutationApi (생성·수정·삭제)
+├── model/
+│   ├── dto/
+│   │   └── <slice>-<action>.dto.ts     # 서버 원본 (snake_case, 약어, Y/N 그대로) + 응답 envelope + 입력 DTO
+│   ├── types/
+│   │   └── <slice>-<action>.types.ts   # 클라이언트 형태 (camelCase, boolean, number, ISO, 풀네임)
+│   ├── mapper/
+│   │   └── <slice>-<action>.mapper.ts  # map<Dto>To<Type>() / map<Type>To<Dto>() 순수 함수 — DTO↔Type 단일 통로
+│   └── store/                          # 도메인 상태(Zustand) — stateful 도메인만 (선택)
 ├── lib/                       # 도메인 비즈니스 로직, 계산 함수 (선택)
 └── index.ts                   # 외부 공개 export — query/mutation 훅 + 클라이언트 타입만
 ```
+
+도메인이 큰 경우 **그룹 폴더 2단 중첩**을 허용합니다 (scms-ems 방식 —
+`src/entities/admin/operator/` 처럼 `entities/<group>/<slice>/`). 이때 배럴 import 는
+`@/entities/<group>/<slice>` 입니다. 그룹 폴더 자체에는 `index.ts` 를 두지 않습니다.
 
 ---
 
@@ -57,9 +64,9 @@ src/entities/<slice>/
 - 서버 스펙이 바뀌면 `dto` + `mapper` 만 고치면 됩니다 (클라이언트 코드 무영향).
 
 실제 코드는 실재 예시를 보십시오:
-[dto](../../src/entities/example/dto/example.dto.ts) ·
-[types](../../src/entities/example/types/example.types.ts) ·
-[mapper](../../src/entities/example/mapper/example.mapper.ts) (+ [mapper 단위 테스트](../../src/entities/example/mapper/example.mapper.test.ts))
+[dto](../../src/entities/example/model/dto/example-list.dto.ts) ·
+[types](../../src/entities/example/model/types/example-list.types.ts) ·
+[mapper](../../src/entities/example/model/mapper/example-list.mapper.ts) (+ [mapper 단위 테스트](../../src/entities/example/model/mapper/example-list.mapper.test.ts))
 
 ---
 
@@ -70,6 +77,11 @@ src/entities/<slice>/
 | 무파라미터 / 고정 파라미터 list·detail | `queryApi(...)` | `[useXxxQuery, prefetchXxx]` 튜플 | [example-list.query.ts](../../src/entities/example/api/example-list.query.ts) |
 | 호출마다 params 가 바뀌는 list·detail | `useQueryApi(...)` | `useQuery` 결과 그대로 | [example-list-with-params.query.ts](../../src/entities/example/api/example-list-with-params.query.ts) |
 | 생성·수정·삭제 mutation | `useMutationApi(...)` | `useMutation` 결과 | [example-update.mutation.ts](../../src/entities/example/api/example-update.mutation.ts) |
+
+> **참조 프로젝트와의 차이 (의도된 것)**: scms-ems 는 mutation 요청 타입을 서버 필드명 그대로
+> `model/types` 에 두고 컴포넌트가 직접 채우지만, 이 프로젝트는 **클라이언트 타입 → mapper → DTO**
+> 변환을 유지합니다 (컴포넌트가 서버 약어를 모르게 하는 §3 규약 우선). envelope 처리도 mapper 내
+> null 가드 대신 `selectResult` 어댑터를 유지합니다.
 
 - `queryApi` 는 등록 시점에 key/params 가 고정됩니다 → 동적 params 에는 쓸 수 없습니다.
 - `useQueryApi` 는 hook 안에서 호출하며 `key: ['xxx', dtoParams]` 로 파라미터별 캐싱이 분리됩니다.
@@ -82,7 +94,8 @@ src/entities/<slice>/
 ## 5. store — 도메인 상태 (선택)
 
 서버 상태는 react-query 가 관리하므로, store(Zustand)는 **클라이언트 측 도메인 상태**가 실제로 있을
-때만 둡니다 (예: 세션, 선택 상태). `shared/lib/zustand/create-store-with-devtool` 헬퍼를 사용합니다.
+때만 `model/store/` 에 둡니다 (예: 세션, 선택 상태). `shared/lib/zustand/create-store-with-devtool`
+헬퍼를 사용합니다.
 
 ---
 
@@ -91,9 +104,9 @@ src/entities/<slice>/
 서버가 API 문서를 제공하면 다음 순서로 엔티티를 만듭니다 (엔티티모델러 에이전트의 작업 규약):
 
 1. **응답 원본 분석** — 필드명·타입·envelope 구조를 그대로 적는다 (변형 금지).
-2. **`dto/<name>.dto.ts`** — 응답·요청을 서버 사정 그대로 타입화한다 (`ApiResponseBase` 합성).
-3. **`types/<name>.types.ts`** — 클라이언트 도메인 모델을 풀네임·정규화 타입으로 설계한다.
-4. **`mapper/<name>.mapper.ts`** — DTO→Type (필요 시 Type→DTO) 순수 함수를 작성하고 **단위 테스트**를 붙인다.
+2. **`model/dto/<slice>-<action>.dto.ts`** — 응답·요청을 서버 사정 그대로 타입화한다 (`ApiResponseBase` 합성).
+3. **`model/types/<slice>-<action>.types.ts`** — 클라이언트 도메인 모델을 풀네임·정규화 타입으로 설계한다.
+4. **`model/mapper/<slice>-<action>.mapper.ts`** — DTO→Type (필요 시 Type→DTO) 순수 함수를 작성하고 **단위 테스트**를 붙인다.
 5. **`api/`** — 위 §4 기준으로 query/mutation 훅을 작성한다 (`selectResult` + mapper 합성).
 6. **`index.ts`** — 훅 + 클라이언트 타입만 공개한다.
 7. **게이트 확인** — `yarn typecheck && yarn lint && yarn test:run && node scripts/check-arch.js` green.

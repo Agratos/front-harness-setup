@@ -1,9 +1,9 @@
 import { selectResult } from '@/shared/lib/api/response-adapter';
 import { queryApi } from '@/shared/lib/react-query/query-api';
 
-import type { ExampleListResponseDto } from '../dto/example.dto';
-import { mapExampleItemDtoToExampleItem } from '../mapper/example.mapper';
-import type { ExampleItem } from '../types/example.types';
+import type { ExampleListResponseDto } from '../model/dto/example-list.dto';
+import { mapExampleItemDtoToExampleItem } from '../model/mapper/example-list.mapper';
+import type { ExampleItem } from '../model/types/example-list.types';
 
 /**
  * 쿼리는 DTO 를 받아 select 에서 mapper 로 변환해 "클라이언트 타입"만 외부에 노출한다.

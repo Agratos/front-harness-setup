@@ -1,9 +1,9 @@
 import type { ApiResponseBase } from '@/shared/lib/api/types';
 import { useMutationApi } from '@/shared/lib/react-query/use-mutation-api';
 
-import type { ExampleUpdateRequestDto } from '../dto/example.dto';
-import { mapExampleUpdateRequestToDto } from '../mapper/example.mapper';
-import type { ExampleUpdateRequest } from '../types/example.types';
+import type { ExampleUpdateRequestDto } from '../model/dto/example-update.dto';
+import { mapExampleUpdateRequestToDto } from '../model/mapper/example-update.mapper';
+import type { ExampleUpdateRequest } from '../model/types/example-update.types';
 
 /**
  * 생성/수정 mutation 표준 패턴.

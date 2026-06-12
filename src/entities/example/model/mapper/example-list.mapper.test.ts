@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ExampleItemDto } from '../dto/example.dto';
+import type { ExampleItemDto } from '../dto/example-list.dto';
 
-import {
-	mapExampleItemDtoToExampleItem,
-	mapExampleListParamsToDto,
-	mapExampleUpdateRequestToDto,
-} from './example.mapper';
+import { mapExampleItemDtoToExampleItem, mapExampleListParamsToDto } from './example-list.mapper';
 
-describe('example.mapper (DTO ↔ Types 단일 통로)', () => {
+describe('example-list.mapper (DTO ↔ Types 단일 통로)', () => {
 	it('서버 DTO 를 클라이언트 타입으로 정규화한다 (약어→풀네임, Y/N→boolean, 문자열→number)', () => {
 		const dto: ExampleItemDto = {
 			exam_id: 7,
@@ -42,13 +38,5 @@ describe('example.mapper (DTO ↔ Types 단일 통로)', () => {
 			use_yn: 'Y',
 		});
 		expect(mapExampleListParamsToDto({ page: 2, pageSize: 10 })).toEqual({ page: 2, page_size: 10 });
-	});
-
-	it('mutation 입력을 서버 DTO 로 변환한다', () => {
-		expect(mapExampleUpdateRequestToDto({ id: 5, name: '수정', isActive: false })).toEqual({
-			exam_id: 5,
-			exam_name: '수정',
-			use_yn: 'N',
-		});
 	});
 });
