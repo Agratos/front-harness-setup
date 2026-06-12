@@ -7,6 +7,12 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 엔티티 구조 scms-ems 방식 전환 (step/07)
+- **변경**: `src/entities/example` 을 `model/`(dto·types·mapper·store) 세그먼트 + API 동작 단위 파일 분리로 재배치 (scms-ems 계승). mutation mapper 경유·`selectResult` 어댑터는 v2 규약 유지
+- **문서 동기 갱신**: `docs/fsd/entities.md`·`naming.md`, README, AGENTS.md, `.claude/agents/entity-modeler.md`, 사양서 변경 이력
+- **검증**: 게이트 4종 green (typecheck 0 / lint 0 / test 5 passed / check-arch 0위반)
+- **마지막 갱신**: 2026-06-12 (기록자: 컨벤션 전환 세션)
+
 ### 🟢 완료 — v2 재구축 (Step 1~6 전체)
 - **사양서**: `docs/spec/interview-2026-06-11.md` (사용자 직접 인터뷰 3라운드, 승인 기록 보유)
 - **단계별 main 머지**:

@@ -1,5 +1,5 @@
-import type { ExampleItemDto, ExampleListParamsDto, ExampleUpdateRequestDto } from '../dto/example.dto';
-import type { ExampleItem, ExampleListParams, ExampleUpdateRequest } from '../types/example.types';
+import type { ExampleItemDto, ExampleListParamsDto } from '../dto/example-list.dto';
+import type { ExampleItem, ExampleListParams } from '../types/example-list.types';
 
 /* 서버 문자열 status → 클라이언트 number | null 로 정규화하는 helper */
 function toNullableNumber(value: string | null): number | null {
@@ -34,14 +34,5 @@ export function mapExampleListParamsToDto(params: ExampleListParams): ExampleLis
 		page: params.page,
 		page_size: params.pageSize,
 		...(params.isActive === undefined ? {} : { use_yn: params.isActive ? 'Y' : 'N' }),
-	};
-}
-
-/* mutation 입력: 클라이언트 → 서버 DTO */
-export function mapExampleUpdateRequestToDto(request: ExampleUpdateRequest): ExampleUpdateRequestDto {
-	return {
-		exam_id: request.id,
-		exam_name: request.name,
-		use_yn: request.isActive ? 'Y' : 'N',
 	};
 }

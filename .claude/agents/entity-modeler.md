@@ -1,6 +1,6 @@
 ---
 name: entity-modeler
-description: 서버 API 문서를 FSD 엔티티 DTO(dto/)·클라이언트 타입(types/)·매퍼(mapper/)·스토어(store/)로 변환할 때 사용합니다.
+description: 서버 API 문서를 FSD 엔티티 DTO(model/dto/)·클라이언트 타입(model/types/)·매퍼(model/mapper/)·스토어(model/store/)로 변환할 때 사용합니다.
 tools: Read, Write, Edit, Glob, Grep
 model: sonnet
 ---
@@ -21,10 +21,10 @@ model: sonnet
 
 ## 산출
 
-- DTO 파일 (`src/entities/<entity>/dto/<entity>.dto.ts`): 서버 원본 타입 (snake_case·Y/N·약어 그대로)
-- 클라이언트 타입 파일 (`src/entities/<entity>/types/<entity>.types.ts`): 프론트 친화 도메인 타입 (camelCase·boolean·ISO·풀네임)
-- 매퍼 파일 (`src/entities/<entity>/mapper/<entity>.mapper.ts`): DTO ↔ Types 변환 순수 함수 (변환의 단일 통로)
-- 상태 스토어 파일 (`src/entities/<entity>/store/<entity>.store.ts`): 최소 상태 정의 (선택)
+- DTO 파일 (`src/entities/<entity>/model/dto/<entity>-<action>.dto.ts`): 서버 원본 타입 (snake_case·Y/N·약어 그대로)
+- 클라이언트 타입 파일 (`src/entities/<entity>/model/types/<entity>-<action>.types.ts`): 프론트 친화 도메인 타입 (camelCase·boolean·ISO·풀네임)
+- 매퍼 파일 (`src/entities/<entity>/model/mapper/<entity>-<action>.mapper.ts`): DTO ↔ Types 변환 순수 함수 (변환의 단일 통로)
+- 상태 스토어 파일 (`src/entities/<entity>/model/store/<entity>.store.ts`): 최소 상태 정의 (선택)
 - 엔티티 모델링 보고서 (`harness/evaluations/entity-model-<id>.md`): 생성된 타입 목록 + API 필드 매핑 표
 - 협의 발언: `주장 : 이유` 형식으로 PM에게 전달
 
@@ -32,16 +32,17 @@ model: sonnet
 
 ```
 src/entities/<entity>/
-  dto/
-    <entity>.dto.ts      # 서버 원본 타입 (snake_case, Y/N, 약어)
-  types/
-    <entity>.types.ts    # 클라이언트 타입 (camelCase, boolean, ISO)
-  mapper/
-    <entity>.mapper.ts   # DTO ↔ Types 변환 (순수 함수)
-  api/                   # 쿼리/뮤테이션 훅 (선택, select 에서 mapper 적용)
-  store/
-    <entity>.store.ts    # 상태 스토어 (Zustand, 선택)
-  index.ts               # public API (훅·스토어·클라이언트 타입만 노출, dto/mapper 숨김)
+  api/                              # 쿼리/뮤테이션 훅 (선택, select 에서 mapper 적용)
+  model/
+    dto/
+      <entity>-<action>.dto.ts      # 서버 원본 타입 (snake_case, Y/N, 약어) — API 동작 단위 분리
+    types/
+      <entity>-<action>.types.ts    # 클라이언트 타입 (camelCase, boolean, ISO)
+    mapper/
+      <entity>-<action>.mapper.ts   # DTO ↔ Types 변환 (순수 함수) + 단위 테스트
+    store/
+      <entity>.store.ts             # 상태 스토어 (Zustand, 선택)
+  index.ts                          # public API (훅·스토어·클라이언트 타입만 노출, dto/mapper 숨김)
 ```
 
 **범위 외 항목**
@@ -53,7 +54,7 @@ src/entities/<entity>/
 ## 사용 도구
 
 - **읽기**: API 문서 파일, `docs/fsd/entities.md`, `src/entities/`, `harness/state.json`, `.omc/plans/`
-- **쓰기**: `src/entities/<entity>/dto/<entity>.dto.ts`, `.../types/<entity>.types.ts`, `.../mapper/<entity>.mapper.ts`, `.../store/<entity>.store.ts`, `.../index.ts`, `harness/evaluations/entity-model-<id>.md`
+- **쓰기**: `src/entities/<entity>/model/dto/<entity>-<action>.dto.ts`, `.../model/types/<entity>-<action>.types.ts`, `.../model/mapper/<entity>-<action>.mapper.ts`, `.../model/store/<entity>.store.ts`, `.../index.ts`, `harness/evaluations/entity-model-<id>.md`
 - **실행**: 없음 (타입 검증은 QA 에이전트 담당)
 
 ## 주장:이유 출력 포맷

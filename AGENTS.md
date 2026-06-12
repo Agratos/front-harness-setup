@@ -94,7 +94,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | `.claude/commands/` | 슬래시 커맨드: `preflight`, `start-project`, `run-cycle`, `status`, `git-flow`, `evaluate`                                                                                                                                        |
 | `harness/`          | 런타임 1차 로그: `config.json`, `state.json`, `decisions/`, `cycles/`, `errors/`, `evaluations/`, `report.md`                                                                                                                     |
 | `docs/`             | 규약·레퍼런스: `usage.md`, `fsd/`(FSD 6레이어 문서 + `naming.md` + `README.md`; **실재 예시** = `src/entities/example`·`src/features/example-list`·`src/pages/home`), `eval-rubric.md`, `state-manifest.md`, `notion-dashboard.md` |
-| `src/`              | FSD 웹프론트 산출물. 레이어(저 → 고): `shared` < `entities` < `features` < `widgets` < `pages` < `app`. 각 슬라이스는 `ui/ api/ dto/ types/ mapper/ store/ lib/ …` 세그먼트 + `index.ts` 배럴 (entities 는 DTO↔Mapper↔Types 패턴) |
+| `src/`              | FSD 웹프론트 산출물. 레이어(저 → 고): `shared` < `entities` < `features` < `widgets` < `pages` < `app`. 각 슬라이스는 `ui/ api/ model/(dto·types·mapper·store) lib/ …` 세그먼트 + `index.ts` 배럴 (entities 는 `model/` 아래 DTO↔Mapper↔Types 패턴 — scms-ems 방식) |
 
 > 레이어 경계는 `scripts/check-arch.js` 가 강제합니다(상위 레이어 import 금지). 세부 규약은 [docs/fsd/](docs/fsd/) 참고.
 

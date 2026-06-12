@@ -2,4 +2,5 @@
 export { prefetchExampleList, useExampleListQuery } from './api/example-list.query';
 export { useExampleListWithParamsQuery } from './api/example-list-with-params.query';
 export { useExampleUpdate, useExampleUpdateMutation } from './api/example-update.mutation';
-export type { ExampleItem, ExampleListParams, ExampleListResult, ExampleUpdateRequest } from './types/example.types';
+export type { ExampleItem, ExampleListParams, ExampleListResult } from './model/types/example-list.types';
+export type { ExampleUpdateRequest } from './model/types/example-update.types';

@@ -23,10 +23,3 @@ export type ExampleListResult = {
 	totalCount: number;
 	items: ExampleItem[];
 };
-
-/* mutation 입력 (클라이언트 측) — camelCase + boolean */
-export type ExampleUpdateRequest = {
-	id: number;
-	name: string;
-	isActive: boolean;
-};
