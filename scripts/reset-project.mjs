@@ -64,7 +64,7 @@ export function progressTemplate() {
 		'## 현재 상태',
 		'',
 		'### ⚪ 미시작 — 새 프로젝트',
-		'- 아직 시작 전입니다. `node scripts/preflight.mjs` → `/start-project` → `/run-cycle` 순으로 진행하세요.',
+		'- 아직 시작 전입니다. `node scripts/init-project.mjs` → `/start-project` → `/run-cycle` 순으로 진행하세요.',
 		'- **마지막 갱신**: (reset-project 로 초기화됨)',
 		'',
 		'## 갱신 규칙',
@@ -332,9 +332,9 @@ function main() {
 	if (notionQueued) {
 		console.log('  2) Notion 미러: harness/notion-outbox/dashboard-reset.json 이 적재됐습니다.');
 		console.log('     세션에서 이 outbox 를 flush(또는 대시보드를 수동 초기화)하면 이전 내용이 비워집니다.');
-		console.log('  3) node scripts/preflight.mjs  → /start-project → /run-cycle');
+		console.log('  3) node scripts/init-project.mjs  → /start-project → /run-cycle');
 	} else {
-		console.log('  2) node scripts/preflight.mjs  → /start-project → /run-cycle');
+		console.log('  2) node scripts/init-project.mjs  → /start-project → /run-cycle');
 	}
 	console.log('  (선택) 새 git 이력으로 시작하려면: rm -rf .git && git init -b main');
 	console.log('         이전 step/* 브랜치 정리: git branch | grep step/ 로 확인 후 삭제');

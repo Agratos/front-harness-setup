@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// preflight.selftest.mjs — preflight 의 순수 로직(Notion page id 추출) 자가검증.
+// init-project.selftest.mjs — init-project 의 순수 로직(Notion page id 추출) 자가검증.
 //
-// 실행: node scripts/preflight.selftest.mjs
+// 실행: node scripts/init-project.selftest.mjs
 // 네트워크 확인(git ls-remote / Notion REST)은 환경 의존이라 테스트하지 않고,
 // URL → page id 추출/정규화 같은 결정적 로직만 검증합니다.
-// 성공 시 'PREFLIGHT SELFTEST: PASS' + exit 0.
-import { extractNotionPageId, toDashedId } from './preflight.mjs';
+// 성공 시 'INIT-PROJECT SELFTEST: PASS' + exit 0.
+import { extractNotionPageId, toDashedId } from './init-project.mjs';
 
 const failures = [];
 function check(label, cond) {
@@ -16,7 +16,7 @@ function check(label, cond) {
 	}
 }
 
-console.log('=== preflight selftest (Notion page id 추출) ===');
+console.log('=== init-project selftest (Notion page id 추출) ===');
 
 const ID32 = '37305d7cde4780ecabfeda0bddebf85b';
 const DASHED = '37305d7c-de47-80ec-abfe-da0bddebf85b';
@@ -45,10 +45,10 @@ check('null 입력 → null', extractNotionPageId(null) === null);
 
 console.log('');
 if (failures.length === 0) {
-	console.log('PREFLIGHT SELFTEST: PASS');
+	console.log('INIT-PROJECT SELFTEST: PASS');
 	process.exit(0);
 } else {
-	console.log(`PREFLIGHT SELFTEST: FAIL (${failures.length}개 실패)`);
+	console.log(`INIT-PROJECT SELFTEST: FAIL (${failures.length}개 실패)`);
 	for (const f of failures) console.log(`  - ${f}`);
 	process.exit(1);
 }

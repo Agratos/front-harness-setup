@@ -54,7 +54,7 @@ node scripts/reset-project.mjs --name=<새이름> --apply
 ### 5) 다음 단계 안내
 
 - `.env` 를 열어 **새 토큰**을 채우도록 안내(또는 MCP 미사용이면 비워둠).
-- `node scripts/preflight.mjs` → `/start-project` → `/run-cycle` 로 진행.
+- `node scripts/init-project.mjs` → `/start-project` → `/run-cycle` 로 진행.
 - (선택) 새 git 이력으로 시작: `rm -rf .git && git init -b main`. 이전 `step/*` 브랜치 정리.
   git 이력은 위험도가 높아 이 커맨드가 자동으로 건드리지 않습니다(안내만).
 
@@ -77,4 +77,4 @@ node scripts/reset-project.mjs --name=<새이름> --apply
 
 - 자가검증: `node scripts/reset-project.selftest.mjs` (CI self-test 에 포함).
 - 단축 실행: `yarn reset` (= `node scripts/reset-project.mjs`). 단 안전을 위해 이 커맨드 절차(미리보기→승인→적용)를 권장합니다.
-- 전체 흐름에서의 위치: **복사 직후 1회 `/clear-project`** → `/preflight` → `/start-project` → `/run-cycle`.
+- 전체 흐름에서의 위치: **복사 직후 1회 `/clear-project`** → `/init-project` → `/start-project` → `/run-cycle`.

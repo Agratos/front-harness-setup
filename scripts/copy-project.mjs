@@ -157,7 +157,7 @@ function main() {
 	console.log(`  1) cd "${target}"`);
 	console.log('  2) yarn install');
 	console.log('  3) .env 에 새 토큰 입력(또는 MCP 미사용이면 비워둠)');
-	console.log('  4) node scripts/preflight.mjs → /start-project → /run-cycle');
+	console.log('  4) node scripts/init-project.mjs → /start-project → /run-cycle');
 	if (clear) {
 		console.log('  (Notion 사용 시) 복사본의 harness/notion-outbox/dashboard-reset.json 을 flush 하면 대시보드가 초기화됩니다.');
 	}

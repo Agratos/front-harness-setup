@@ -22,9 +22,9 @@ node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
 #   Notion 사용 시 dashboard-reset 페이로드 적재(다음 flush 때 대시보드 초기화).
 
 # 1) 프리플라이트 — git/MCP 게이트 + (선택) 원격·Notion 접근 확인 + harness/config.json 기록
-node scripts/preflight.mjs            # 기본 useGit=true, useMcp=false
+node scripts/init-project.mjs            # 기본 useGit=true, useMcp=false
 #   원격·Notion 연동까지 미리 확인(권장): 끊김을 개발 전에 잡음
-node scripts/preflight.mjs --use-mcp=true \
+node scripts/init-project.mjs --use-mcp=true \
   --git-remote=git@github.com:me/my-app.git \
   --notion-url=https://www.notion.so/.../Dashboard-<32hex>
 #   (git ls-remote 로 접근 확인 후 origin 연결, Notion page 조회로 integration 연결 확인)
@@ -44,14 +44,14 @@ node scripts/eval-playwright.mjs      # harness/evaluations/<id>.{md,json}
 ```
 
 Claude Code 안에서는 위 스크립트를 감싼 슬래시 커맨드로도 실행합니다:
-`/copy-project`(다른 경로로 복사+초기화) **또는** (제자리 초기화) `/clear-project` → `/preflight` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
+`/copy-project`(다른 경로로 복사+초기화) **또는** (제자리 초기화) `/clear-project` → `/init-project` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
 
 - **`/copy-project`** — 경로·이름만 받아 이 하네스를 `<경로>/<이름>` 으로 복사하고 곧바로 초기화합니다(`.env` 토큰·`.git`·node_modules 제외 복사). 새로 시작할 때 권장.
 - **`/clear-project`** — 이미 복사해 둔 저장소를 **제자리에서** 초기화(미리보기→승인→적용 안전 절차).
 
 ### 통합 데모로 한 번에 흐름 보기
 
-전체 골격(preflight → git-flow → loop → 협의 로그 → 평가 → 최종 보고)을 **실제 저장소를 오염시키지 않고** 한 번에 시연합니다. git-flow·loop·협의 결정(logDecision) 시연은 모두 임시 격리 환경에서 돌고, 실제 repo 에는 보고서(`harness/report.md`)·요약 로그(`harness/cycles/`)만 남깁니다.
+전체 골격(init-project → git-flow → loop → 협의 로그 → 평가 → 최종 보고)을 **실제 저장소를 오염시키지 않고** 한 번에 시연합니다. git-flow·loop·협의 결정(logDecision) 시연은 모두 임시 격리 환경에서 돌고, 실제 repo 에는 보고서(`harness/report.md`)·요약 로그(`harness/cycles/`)만 남깁니다.
 
 ```bash
 node scripts/demo.mjs                 # → 'DEMO: PASS', harness/report.md 채워짐
@@ -68,7 +68,7 @@ node scripts/eval.selftest.mjs        # 평가/teardown/루브릭
 node scripts/log.selftest.mjs         # 로깅 헬퍼
 node scripts/reset-project.selftest.mjs  # 제자리 초기화(멱등·Notion 리셋)
 node scripts/copy-project.selftest.mjs   # 복사 제외 필터·대상 검증
-node scripts/preflight.selftest.mjs      # Notion page id 추출
+node scripts/init-project.selftest.mjs      # Notion page id 추출
 ```
 
 ## 구조 개요
@@ -76,7 +76,7 @@ node scripts/preflight.selftest.mjs      # Notion page id 추출
 ```
 harness-setup/
 ├─ scripts/            # 하니스 드라이버·게이트·평가·로깅 (Node .mjs)
-│  ├─ preflight.mjs        # git/MCP 게이트 + config.json
+│  ├─ init-project.mjs        # git/MCP 게이트 + config.json
 │  ├─ loop.mjs             # 재호출 드라이버 (1 호출 = 1 페이즈, 크래시 재개)
 │  ├─ git-flow.mjs         # seed-main / start-step / merge-step (직푸시 차단)
 │  ├─ done-gate.mjs        # 결정적 게이트 + 평가 임계치(히스테리시스/래치)
@@ -89,9 +89,9 @@ harness-setup/
 │  └─ lib/                 # state / log / rubric / teardown / notion
 ├─ .claude/
 │  ├─ agents/          # 협의체 9역할 정의 (ceo, pm, architect, ui, ux, qa, quality, …)
-│  └─ commands/        # 슬래시 커맨드 (preflight, start-project, run-cycle, …)
+│  └─ commands/        # 슬래시 커맨드 (init-project, start-project, run-cycle, …)
 ├─ harness/            # 런타임 1차 로그
-│  ├─ config.json          # preflight 결과 (useGit/useMcp/skipGitFlow)
+│  ├─  config.json          # init-project 결과 (useGit/useMcp/skipGitFlow/gitRemote/notion)
 │  ├─ state.json           # 진행 상태 매니페스트 (크래시-안전)
 │  ├─ decisions/           # 협의·결론 (안건/주장:이유/타협/결론+근거/…)
 │  ├─ cycles/              # 단계별 진행 로그 (cycle-log.ndjson)
@@ -114,6 +114,7 @@ harness-setup/
 
 ## 더 알아보기
 
+- **슬래시 커맨드 인덱스·실행 흐름** → [docs/commands.md](docs/commands.md)
 - **상세 사용법·명령어 레퍼런스·협의체 동작·문서 읽는 법** → [docs/usage.md](docs/usage.md)
 - **협의체 9역할 + 오케스트레이터 중재 모델 + 디렉터리 맵** → [AGENTS.md](AGENTS.md)
 - **FSD 규약** → [docs/fsd/](docs/fsd/) · **평가 루브릭** → [docs/eval-rubric.md](docs/eval-rubric.md)

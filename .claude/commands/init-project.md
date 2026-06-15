@@ -1,7 +1,9 @@
-# /preflight — 프로젝트 시작 전 게이트
+# /init-project — 프로젝트 시작 전 게이트
 
 harness-setup 의 자율 개발 루프를 시작하기 **전에** git/MCP 연동을 점검·결정하는 게이트입니다.
 (인터뷰/계획보다 먼저 실행)
+
+> 이름 메모: `/init` 은 Claude Code 빌트인(CLAUDE.md 생성)으로 예약되어 있어 `/init-project` 를 씁니다. 스크립트는 `scripts/init-project.mjs`.
 
 ## 동작
 
@@ -35,17 +37,17 @@ harness-setup 의 자율 개발 루프를 시작하기 **전에** git/MCP 연동
 
 ```bash
 # 기본값 (useGit=true, useMcp=false)
-node scripts/preflight.mjs
+node scripts/init-project.mjs
 
 # git 원격 주소 + Notion 대시보드 URL 접근 확인까지
-node scripts/preflight.mjs --use-mcp=true \
+node scripts/init-project.mjs --use-mcp=true \
   --git-remote=git@github.com:me/my-app.git \
   --notion-url=https://www.notion.so/me/Dashboard-37305d7cde4780ecabfeda0bddebf85b
 
 # 비대화형 주입
-node scripts/preflight.mjs --use-git=true --use-mcp=true
-node scripts/preflight.mjs --no-git            # git 우회
-HARNESS_USE_GIT=false HARNESS_USE_MCP=true node scripts/preflight.mjs
+node scripts/init-project.mjs --use-git=true --use-mcp=true
+node scripts/init-project.mjs --no-git            # git 우회
+HARNESS_USE_GIT=false HARNESS_USE_MCP=true node scripts/init-project.mjs
 ```
 
 ## 인자 / 환경변수
@@ -66,8 +68,8 @@ HARNESS_USE_GIT=false HARNESS_USE_MCP=true node scripts/preflight.mjs
 1. **git 사용 여부**, 사용 시 **원격 저장소 주소(URL)** — 비어 있는 새 원격을 미리 만들어 두고 그 URL 을 받습니다.
 2. **MCP(Notion) 사용 여부**, 사용 시 **대시보드로 쓸 Notion 페이지 URL** — 그 페이지에 integration 을 연결해 두어야 합니다.
 
-받은 주소로 preflight 를 실행해 **접근 확인 결과(✅/❌)를 사용자에게 보여줍니다.** ❌ 면 원인(권한·인증·integration 미연결)을 안내하고 고친 뒤 다시 실행하도록 권합니다. 비대화형(CI/자율 루프)에서는 인자·환경변수로 주입합니다.
+받은 주소로 init-project 를 실행해 **접근 확인 결과(✅/❌)를 사용자에게 보여줍니다.** ❌ 면 원인(권한·인증·integration 미연결)을 안내하고 고친 뒤 다시 실행하도록 권합니다. 비대화형(CI/자율 루프)에서는 인자·환경변수로 주입합니다.
 
 ## 다음 단계
 
-preflight 통과 후 → `/start-project` (Q&A → 계획 → 조건부 main 시드) → `/run-cycle` 루프.
+init-project 통과 후 → `/start-project` (Q&A → 계획 → 조건부 main 시드) → `/run-cycle` 루프.

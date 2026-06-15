@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// preflight.mjs — 프로젝트 시작 전 게이트 (Step 1, AC1 + 연동 접근 확인)
+// init-project.mjs — 프로젝트 시작 전 게이트 (Step 1, AC1 + 연동 접근 확인)
 // - .git 존재 확인, useGit=true 이고 저장소가 없으면 git init (이 스텝이 저장소 생성 책임)
 // - (선택) git 원격 주소·Notion 대시보드 URL 을 받아 **실제 접근 가능한지 확인**한다.
 //     · git: `git ls-remote <url>` 로 인증·존재 확인 → 되면 origin 연결
@@ -166,7 +166,7 @@ async function main() {
 	const gitRemote = parseStr(argv, 'git-remote', 'HARNESS_GIT_REMOTE');
 	const notionUrl = parseStr(argv, 'notion-url', 'HARNESS_NOTION_URL');
 
-	console.log('=== harness preflight ===');
+	console.log('=== harness init-project ===');
 	const hadGit = gitInitialized();
 	console.log(`git repository: ${hadGit ? 'present (.git found)' : 'absent (no .git)'}`);
 	console.log(`useGit=${useGit}  useMcp=${useMcp}`);
@@ -253,7 +253,7 @@ async function main() {
 	if (gitRemoteCheck && !gitRemoteCheck.ok) warnings.push('git 원격 접근 실패');
 	if (notionCheck && !notionCheck.ok) warnings.push('Notion 페이지 접근 실패');
 	if (warnings.length) console.log(`⚠️ 경고: ${warnings.join(', ')} — 해결 후 다시 실행 권장`);
-	console.log('=== preflight complete ===');
+	console.log('=== init-project complete ===');
 }
 
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

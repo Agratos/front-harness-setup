@@ -7,6 +7,12 @@
 
 ## 현재 상태
 
+### 🟢 완료 — preflight → init-project rename + commands 인덱스
+- **rename**: `scripts/preflight.mjs`→`init-project.mjs`, `*.selftest.mjs` 동일, `.claude/commands/preflight.md`→`init-project.md`. 커맨드는 `/init-project`(`/init` 은 빌트인 예약). 스크립트 경로·커맨드명 참조 전부 갱신. **단 `config.json` 의 `preflight` 키는 데이터 호환 위해 유지**(demo·init-project.mjs 가 읽고 씀).
+- **commands 정리**: `docs/commands.md` 인덱스 신설 — 8개 커맨드를 부트스트랩/사이클로 묶고 실행 흐름·파괴성 표기. (commands/ 안에 두면 `.md` 가 슬래시 커맨드로 등록돼 버려 docs/ 에 배치)
+- **검증**: INIT-PROJECT SELFTEST PASS, lint green, init-project 스모크(`--no-git`) 동작, demo PASS(config.preflight 키 정상).
+- **마지막 갱신**: 2026-06-15 (기록자: init-project rename 세션)
+
 ### 🟢 완료 — preflight 에 git 원격·Notion 접근 확인 추가
 - **추가**: `preflight.mjs` 가 `--git-remote=<url>` → `git ls-remote` 로 접근·인증 확인 후 origin 연결, `--notion-url=<url>` → page id 추출 + `NOTION_TOKEN` 으로 페이지 조회(integration 연결 확인). 결과를 `config.json`(`gitRemote`·`notionDashboardPageId`·`preflight.checks`)에 기록. 실패는 경고만(자율 유지).
 - **목적**: 인터뷰/개발 **전에** 연동 끊김을 잡아 "한참 작업 후 push·미러 실패" 사고 방지.
