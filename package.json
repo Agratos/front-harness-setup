@@ -15,7 +15,8 @@
 		"test": "vitest",
 		"test:run": "vitest run",
 		"check:arch": "node scripts/check-arch.js",
-		"reset": "node scripts/reset-project.mjs"
+		"reset": "node scripts/reset-project.mjs",
+		"copy": "node scripts/copy-project.mjs"
 	},
 	"dependencies": {
 		"@mantine/core": "^8.2.7",
