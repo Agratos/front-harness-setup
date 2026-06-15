@@ -12,10 +12,13 @@ Claude Code 서브에이전트 **협의체**가 `주장:이유` 형식으로 토
 # 0) 의존성 설치 (최초 1회)
 yarn install
 
-# 0-1) 이 저장소를 복사해 새 프로젝트로 시작하는 경우 — 초기화 (이전 산출물·토큰·정체성 정리)
+# 0-1) 새 프로젝트로 시작하기 — 둘 중 하나
+#  (A) 다른 경로로 복사 + 초기화 (권장): .env 토큰·.git·node_modules 제외 복사 후 자동 초기화
+node scripts/copy-project.mjs --dest=../ --name=my-app
+#  (B) 제자리 초기화: 이미 복사해 둔 폴더에서 이전 산출물·토큰·정체성만 정리
 node scripts/reset-project.mjs --name=my-app          # 미리보기(dry-run)
 node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
-#   harness/ 런타임 로그·평가(가짜 통과 방지)·결정 정리, .env 토큰 제거, 이름 치환,
+#   초기화 = harness/ 런타임 로그·평가(가짜 통과 방지)·결정 정리, .env 토큰 제거, 이름 치환,
 #   Notion 사용 시 dashboard-reset 페이로드 적재(다음 flush 때 대시보드 초기화).
 
 # 1) 프리플라이트 — git/MCP 사용 여부 게이트 + harness/config.json 기록
@@ -37,8 +40,10 @@ node scripts/eval-playwright.mjs      # harness/evaluations/<id>.{md,json}
 ```
 
 Claude Code 안에서는 위 스크립트를 감싼 슬래시 커맨드로도 실행합니다:
-(복사 직후 1회 `/clear-project` →) `/preflight` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
-(`/clear-project` 는 새 프로젝트 초기화 — 미리보기→승인→적용 안전 절차로 0-1 단계를 감쌉니다.)
+`/copy-project`(다른 경로로 복사+초기화) **또는** (제자리 초기화) `/clear-project` → `/preflight` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
+
+- **`/copy-project`** — 경로·이름만 받아 이 하네스를 `<경로>/<이름>` 으로 복사하고 곧바로 초기화합니다(`.env` 토큰·`.git`·node_modules 제외 복사). 새로 시작할 때 권장.
+- **`/clear-project`** — 이미 복사해 둔 저장소를 **제자리에서** 초기화(미리보기→승인→적용 안전 절차).
 
 ### 통합 데모로 한 번에 흐름 보기
 
@@ -57,7 +62,8 @@ node scripts/resume.selftest.mjs      # 멱등 재개(크래시 후 미커밋 �
 node scripts/git-flow.selftest.mjs    # git-flow (임시 repo)
 node scripts/eval.selftest.mjs        # 평가/teardown/루브릭
 node scripts/log.selftest.mjs         # 로깅 헬퍼
-node scripts/reset-project.selftest.mjs  # 새 프로젝트 초기화(멱등·Notion 리셋)
+node scripts/reset-project.selftest.mjs  # 제자리 초기화(멱등·Notion 리셋)
+node scripts/copy-project.selftest.mjs   # 복사 제외 필터·대상 검증
 ```
 
 ## 구조 개요
@@ -72,7 +78,8 @@ harness-setup/
 │  ├─ eval-playwright.mjs  # 고객 평가(Playwright) + 루브릭 + teardown
 │  ├─ check-arch.js        # FSD 레이어 경계 검사
 │  ├─ demo.mjs             # 통합 스모크 데모
-│  ├─ reset-project.mjs    # 복사 후 새 프로젝트 초기화 (산출물·토큰·정체성·Notion)
+│  ├─ copy-project.mjs     # 다른 경로로 복사 + 초기화 (새 프로젝트 시작)
+│  ├─ reset-project.mjs    # 제자리 초기화 (산출물·토큰·정체성·Notion)
 │  ├─ *.selftest.mjs       # 각 모듈 자가검증
 │  └─ lib/                 # state / log / rubric / teardown / notion
 ├─ .claude/

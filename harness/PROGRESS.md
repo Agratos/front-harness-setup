@@ -7,6 +7,15 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 복사+초기화 커맨드 `/copy-project`
+- **추가**: `scripts/copy-project.mjs` + `.claude/commands/copy-project.md`. 이 하네스를 `<경로>/<이름>` 으로 복사하고 복사본에서 `reset-project --apply` 자동 실행(복사→초기화 한 번에).
+  - 제외 복사: node_modules·.git·dist·.yarn 캐시·**.env(토큰)**·*.tsbuildinfo·.omc.
+  - **미리보기/승인 없음**(사용자 요청): 복사는 새 위치 생성이라 비파괴적. 안전장치는 "대상 기존 비어있지않음/소스 내부경로 거부"로 충분.
+  - 커맨드는 대상 경로·이름만 묻고 바로 실행 → Notion flush 마무리.
+- **검증**: `scripts/copy-project.selftest.mjs`(26 체크, filter·planCopy·doCopy) + 실제 C:\tmp 복사 smoke PASS. CI self-test 9종 편입.
+- **문서 동기**: README(빠른시작 0-1 A/B·구조·자가검증·커맨드 흐름), AGENTS(커맨드·scripts), usage §6-1, package.json(`yarn copy`).
+- **마지막 갱신**: 2026-06-15 (기록자: copy-project 세션)
+
 ### 🟢 완료 — 초기화 슬래시 커맨드 `/clear-project`
 - **추가**: `.claude/commands/clear-project.md` — `reset-project.mjs` 를 **미리보기→사용자 승인→적용→Notion 실제 flush** 안전 절차로 감싸는 슬래시 커맨드. 직접 `node` 실행의 파괴 위험·번거로움 해소.
 - 이름: `/clear` 는 Claude Code 빌트인(대화 비우기) 예약어라 `/clear-project` 사용(스크립트명은 reset-project 유지).
