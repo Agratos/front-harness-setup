@@ -7,6 +7,14 @@
 
 ## 현재 상태
 
+### 🟢 완료 — Notion 자동 기록 배선(C) + agent subset 기본값 힌트(D)
+- **C(코드)**: `loop.mjs` 가 매 페이즈 전이마다 `upsertDashboard`(대시보드 진행상황), `log.mjs logDecision` 이 `mirrorDecisionComment`(결정 결론)를 `harness/notion-outbox/` 에 자동 적재. 둘 다 `useMcp=false` 면 no-op. 라이브 flush 는 오케스트레이터/MCP. (이전엔 함수만 있고 호출 0건이라 진행 기록이 안 됐음)
+- **D(md+설정)**: agent subset 선정은 코드 강제하지 않음(맥락 판단). 대신 `docs/agent-roster.md`(페이즈별 기본 subset 힌트) 신설 + `ceo.md` 가 출발점으로 참조. 강제 아닌 힌트.
+- **근거**: 노션 기록=기계적 부수효과→코드, agent 선택=맥락 판단→md(LLM). 하네스 일관 원칙(게이트·시퀀싱·기록=코드, 토론·선택=LLM).
+- **검증**: lint green, selftest 10종 PASS, demo PASS. loop·logDecision 미러 실측(useMcp=true → outbox 적재 / false → no-op).
+- **문서 동기**: run-cycle.md(Notion 자동 미러 절), usage §4, AGENTS(강제 모델 표 + 페이즈 투입 예시 → agent-roster 링크).
+- **마지막 갱신**: 2026-06-15 (기록자: Notion 자동기록·roster 힌트 세션)
+
 ### 🟢 완료 — Notion 책임 재배치 + start 0번(--fresh) 제거
 - **start `--fresh` 제거**: 무조건 `/copy-project` 로 복사해 오는 전제 → `/start-project` 의 제자리 정리 단계 삭제. start = 1) 연동 확인+Notion 초기화 → 2) Q&A → 3) 계획 → 4) main 시드.
 - **copy = 빈 껍데기**: `copy-project.mjs` 가 reset 을 항상 `--no-notion` 으로 호출. 현재 프로젝트(harness-setup)에 종속된 테스트 산출물·토큰·정체성만 비우고 **Notion 은 건드리지 않음**.

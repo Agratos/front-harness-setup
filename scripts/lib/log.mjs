@@ -12,6 +12,8 @@
 import { appendFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { mirrorDecisionComment } from './notion.mjs';
+
 /**
  * 오류 로그를 harness/errors/<id>.md 에 기록한다.
  *
@@ -252,6 +254,14 @@ export function logDecision(repoRoot, { topic, raisedBy, claims, rebuttals, comp
 	].join('\n');
 
 	writeFileSync(filePath, content, 'utf8');
+
+	// Notion 자동 미러: 결정 결론을 댓글 스레드로 미러(useMcp 게이트 → no-op 가능). 실패는 기록에 영향 없음.
+	try {
+		mirrorDecisionComment(id, { turn: 0, author: raisedByVal, text: conclusionVal }, { repoRoot, id: `${id}-turn-0` });
+	} catch {
+		/* notion 미러 실패 무시 */
+	}
+
 	return filePath;
 }
 
