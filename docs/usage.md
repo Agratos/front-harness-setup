@@ -126,12 +126,30 @@ logDecision(repoRoot, {
 
 - git-flow(`seed-main → start-step → merge-step`)는 `os.tmpdir` 의 throwaway 임시 git repo 에서 실행 → 실제 repo 무커밋.
 - loop 1-step 완주는 임시 cwd(demo state)에서 실행 → 실제 `harness/state.json` 무손상.
-- 실제 repo 에 남기는 산출물: (1) `harness/decisions/decision-NNNN.md` 1건(`logDecision`, 반복 실행해도 누적 안 함), (2) `harness/report.md` 최종 보고(eval-0001 의 차원별/종합 평점 + 단계 요약 + 미해결 불만 수), (3) `harness/cycles/` 요약 로그.
+- `logDecision` 협의 결정 시연도 **임시 격리 디렉터리**에서 실행 → 실제 `harness/decisions/` 무오염(이전엔 실제 decisions 를 일괄 삭제하다 진짜 기록까지 지우던 버그를 제거).
+- 실제 repo 에 남기는 산출물: (1) `harness/report.md` 최종 보고(eval-0001 의 차원별/종합 평점 + 단계 요약 + 미해결 불만 수), (2) `harness/cycles/` 요약 로그.
 - 성공 시 마지막 줄에 `DEMO: PASS`.
 
 ---
 
-## 6. 문서 읽는 법
+## 6. 새 프로젝트 초기화 (`scripts/reset-project.mjs`)
+
+이 저장소를 폴더째 복사해 새 프로젝트를 시작할 때, 이전 프로젝트의 잔존물을 한 번에 정리합니다. **파괴적이므로 기본은 dry-run(미리보기)이고 `--apply` 를 줘야 실제로 적용**됩니다.
+
+```bash
+node scripts/reset-project.mjs --name=my-app          # 미리보기
+node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
+```
+
+- **정리 대상**: `harness/` 런타임 산출물(`state.json`·`config.json`·`report.md`·`cycles` 로그·`decisions`·`evaluations`·`errors`), `.env` 토큰(→ `.env.example` 내용으로), 제품 정체성(`package.json`·`index.html`·`src/app/App.tsx` 의 `harness-setup` → 새 이름).
+- **가짜 통과 방지**: 이전 평가(`harness/evaluations/<id>.json`)를 제거합니다 — 안 그러면 새 프로젝트의 첫 merge 게이트가 옛 점수를 읽어 통과해 버립니다.
+- **Notion 초기화**: 프로젝트가 Notion 을 썼다면(`config.useMcp`) `harness/notion-outbox/dashboard-reset.json` 페이로드를 적재합니다. 다음 flush 때 오케스트레이터가 대시보드(계획·요약·결정 미러)를 비웁니다. `--notion`/`--no-notion` 으로 강제·억제할 수 있습니다.
+- **보존**: 하네스 엔진(`scripts/`·`.claude/`·`docs/`·`src/` 예시 슬라이스)과 `example-*`/`.gitkeep` 문서 예시는 건드리지 않습니다. git 이력(`.git`)·브랜치는 안내만 하고 자동 변경하지 않습니다.
+- **멱등**: 이미 정리된 저장소에 다시 돌리면 변경 0건입니다.
+
+---
+
+## 7. 문서 읽는 법
 
 | 무엇이 궁금한가                   | 어디를 보나                                                                                                                     |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |

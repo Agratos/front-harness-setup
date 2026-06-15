@@ -90,7 +90,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 
 | 경로                | 무엇이 있나                                                                                                                                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/`          | 하니스 드라이버·게이트·평가·로깅 (Node `.mjs`). `loop.mjs`(드라이버), `git-flow.mjs`, `done-gate.mjs`, `eval-playwright.mjs`, `check-arch.js`, `preflight.mjs`, `demo.mjs`, `*.selftest.mjs`                                      |
+| `scripts/`          | 하니스 드라이버·게이트·평가·로깅 (Node `.mjs`). `loop.mjs`(드라이버), `git-flow.mjs`, `done-gate.mjs`, `eval-playwright.mjs`, `check-arch.js`, `preflight.mjs`, `demo.mjs`, `reset-project.mjs`(복사 후 새 프로젝트 초기화), `*.selftest.mjs`                                      |
 | `scripts/lib/`      | 공용 모듈: `state.mjs`(상태 매니페스트), `log.mjs`(logError/logCycle/logDecision), `rubric.mjs`(채점), `teardown.mjs`(프로세스 정리), `notion.mjs`(미러 어댑터)                                                                   |
 | `.claude/agents/`   | 협의체 9역할 정의 + `README.md` 인덱스                                                                                                                                                                                            |
 | `.claude/commands/` | 슬래시 커맨드: `preflight`, `start-project`, `run-cycle`, `status`, `git-flow`, `evaluate`                                                                                                                                        |

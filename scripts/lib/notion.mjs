@@ -155,4 +155,37 @@ export function mirrorDecisionComment(decisionId, turn, opts = {}) {
 	return { skipped: false, outboxPath, payload };
 }
 
-export default { readUseMcp, upsertDashboard, mirrorDecisionComment };
+/**
+ * 새 프로젝트 초기화용 대시보드 리셋 페이로드를 outbox 에 적재한다.
+ * 라이브 Notion 을 직접 비우지 않고(이 어댑터의 설계 원칙), flush 레이어가
+ * 'dashboard-main' 페이지의 내용(계획 DB 행·요약 카드·결정 미러)을 비우고
+ * 새 프로젝트 상태로 되돌리도록 지시하는 페이로드를 남긴다.
+ *
+ * 게이트: useMcp=false 면 no-op({skipped:true}). 단 opts.force=true 면 게이트를 우회한다
+ *   (reset-project 가 config 삭제 전에 useMcp 를 이미 판단했을 때 사용).
+ *
+ * @param {{repoRoot?:string, projectName?:string, id?:string, force?:boolean}} [opts]
+ * @returns {{skipped:boolean, outboxPath?:string, payload?:object}}
+ */
+export function resetDashboard(opts = {}) {
+	const repoRoot = opts.repoRoot ?? process.cwd();
+	if (!opts.force && !readUseMcp(repoRoot)) {
+		return { skipped: true };
+	}
+	const payload = {
+		kind: 'dashboard.reset',
+		// 멱등 키: 같은 대시보드 페이지를 대상으로 함(upsert 와 동일 페이지).
+		idempotencyKey: 'dashboard-main',
+		action: 'archive-and-clear',
+		// flush 레이어가 비울 대상: 계획 DB 행 / 요약 카드 / 결정 댓글 미러.
+		clear: ['planStepsDb.rows', 'summaryCards', 'decisionComments'],
+		// 콜아웃은 새 프로젝트 상태로 초기화(점수 null, 새 이름).
+		resetCallout: { projectName: opts.projectName ?? null, overallScore: null, goal: null },
+		note: '새 프로젝트 초기화(reset-project): 이전 대시보드 내용을 비우고 새 프로젝트 상태로 되돌린다. flush 시 적용.',
+	};
+	const id = opts.id ?? 'dashboard-reset';
+	const outboxPath = writeOutbox(repoRoot, id, payload);
+	return { skipped: false, outboxPath, payload };
+}
+
+export default { readUseMcp, upsertDashboard, mirrorDecisionComment, resetDashboard };

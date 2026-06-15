@@ -12,6 +12,12 @@ Claude Code 서브에이전트 **협의체**가 `주장:이유` 형식으로 토
 # 0) 의존성 설치 (최초 1회)
 yarn install
 
+# 0-1) 이 저장소를 복사해 새 프로젝트로 시작하는 경우 — 초기화 (이전 산출물·토큰·정체성 정리)
+node scripts/reset-project.mjs --name=my-app          # 미리보기(dry-run)
+node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
+#   harness/ 런타임 로그·평가(가짜 통과 방지)·결정 정리, .env 토큰 제거, 이름 치환,
+#   Notion 사용 시 dashboard-reset 페이로드 적재(다음 flush 때 대시보드 초기화).
+
 # 1) 프리플라이트 — git/MCP 사용 여부 게이트 + harness/config.json 기록
 node scripts/preflight.mjs            # 기본 useGit=true, useMcp=false
 #   비대화형: node scripts/preflight.mjs --use-git=true --use-mcp=false
@@ -45,11 +51,12 @@ node scripts/demo.mjs                 # → 'DEMO: PASS', harness/report.md 채�
 
 ```bash
 yarn typecheck && yarn lint && yarn test:run && node scripts/check-arch.js
-node scripts/loop.selftest.mjs        # 드라이버 시퀀싱
+node scripts/loop.selftest.mjs        # 드라이버 시퀀싱 + 재작업→투표 분기
 node scripts/resume.selftest.mjs      # 멱등 재개(크래시 후 미커밋 페이즈 재실행)
 node scripts/git-flow.selftest.mjs    # git-flow (임시 repo)
 node scripts/eval.selftest.mjs        # 평가/teardown/루브릭
 node scripts/log.selftest.mjs         # 로깅 헬퍼
+node scripts/reset-project.selftest.mjs  # 새 프로젝트 초기화(멱등·Notion 리셋)
 ```
 
 ## 구조 개요
@@ -64,6 +71,7 @@ harness-setup/
 │  ├─ eval-playwright.mjs  # 고객 평가(Playwright) + 루브릭 + teardown
 │  ├─ check-arch.js        # FSD 레이어 경계 검사
 │  ├─ demo.mjs             # 통합 스모크 데모
+│  ├─ reset-project.mjs    # 복사 후 새 프로젝트 초기화 (산출물·토큰·정체성·Notion)
 │  ├─ *.selftest.mjs       # 각 모듈 자가검증
 │  └─ lib/                 # state / log / rubric / teardown / notion
 ├─ .claude/
