@@ -10,8 +10,10 @@
 //      안에서만 실행합니다(git-flow.selftest 와 동일 패턴). 실제 repo 는 절대 커밋하지 않습니다.
 //   2) loop 드라이버 1-step 완주도 **임시 cwd(demo state)** 에서 돌려, 실제 harness/state.json
 //      을 절대 덮어쓰지 않습니다(데모 종료 후 실제 state.json 이 그대로 유효함을 호출자가 검증).
-//   3) 데모가 실제 repo 에 남기는 산출물은 (a) harness/decisions/<id>.md 한 건(logDecision),
-//      (b) harness/report.md 최종 보고서 채우기 — 두 가지뿐입니다.
+//   3) logDecision 협의 결정 시연도 **임시 격리 디렉터리**에서 수행합니다. 실제 harness/decisions/ 는
+//      절대 생성·삭제하지 않아 실제 결정 기록을 보존합니다(과거: 멱등성 위해 decision-*.md 를 일괄
+//      삭제하다 실제 결정까지 지우던 버그를 제거). 데모가 실제 repo 에 남기는 산출물은
+//      (a) harness/report.md 최종 보고서, (b) harness/cycles/ 요약 로그 — 두 가지뿐입니다.
 //
 // 출력: 성공 시 마지막 줄에 'DEMO: PASS'. 실패 시 'DEMO: FAIL' + exit 1.
 import { execFileSync } from 'node:child_process';
@@ -229,55 +231,53 @@ try {
 // ──────────────────────────────────────────────────────────────────────────
 // 3) 협의 결정 산출 (logDecision) — 실제 repo 의 harness/decisions/<id>.md 한 건 생성.
 // ──────────────────────────────────────────────────────────────────────────
-section('3) 협의 결정 산출 (logDecision → harness/decisions/<id>.md)');
-// 멱등성: 이전 데모가 만든 decision-*.md 를 제거해, 반복 실행 시 누적·시퀀스 증가를 막는다.
-// (example-*.md 데모 예시는 보존)
-const decisionsDirEarly = path.join(repoRoot, 'harness', 'decisions');
+section('3) 협의 결정 산출 (logDecision → 임시 격리, 실제 decisions 무오염)');
+// 데모 결정은 실제 harness/decisions/ 를 오염시키지 않도록 **임시 격리 디렉터리**에 기록한다.
+// (git/loop 시연과 동일한 격리 원칙. 실제 결정 기록을 절대 생성·삭제하지 않는다.)
+// 과거에는 실제 repo 에 직접 쓰고 멱등성 위해 decision-*.md 를 일괄 삭제했는데,
+// 그 정규식이 실제 결정(decision-0002 등)까지 지우는 데이터 손실 버그였다.
+const decisionTmp = mkdtempSync(path.join(os.tmpdir(), 'demo-decision-'));
+let decisionFiles = [];
+let decisionBasename = '-';
 try {
-	if (existsSync(decisionsDirEarly)) {
-		for (const f of readdirSync(decisionsDirEarly)) {
-			if (/^decision-\d+\.md$/.test(f)) rmSync(path.join(decisionsDirEarly, f), { force: true });
-		}
-	}
-} catch {
-	/* 정리 실패는 데모 진행에 영향 없음 */
+	const decisionPath = logDecision(decisionTmp, {
+		topic: '통합 데모에서 git-flow·loop·logDecision 을 실제 repo 에 직접 적용할지, 임시 격리할지',
+		raisedBy: 'architect',
+		claims: [
+			{
+				agent: 'architect',
+				claim: 'git-flow 시연은 throwaway 임시 git repo 에서만 수행해야 한다',
+				reason: '실제 repo 의 main 은 "미존재 시 1회 시드" 규약이라, 데모 커밋이 들어가면 부트스트랩 히스토리를 오염시킨다',
+			},
+			{
+				agent: 'qa',
+				claim: 'loop 드라이버 완주도 임시 cwd(demo state)에서 돌려야 한다',
+				reason: 'loop.mjs 는 cwd 의 harness/state.json 을 원자적으로 덮어쓰므로, 실제 state 를 건드리면 진행 상태가 손상된다',
+			},
+			{
+				agent: 'pm',
+				claim: '협의 결정 시연도 임시 격리 디렉터리에 쓰고, 실제 repo 에는 report.md + cycles 요약만 남긴다',
+				reason: 'logDecision 은 기존 파일 수로 번호를 매기므로 실제 decisions 에 쓰면 반복 실행마다 누적되고, 이를 막으려 일괄 삭제하면 실제 결정 기록까지 지워진다',
+			},
+		],
+		rebuttals: [
+			'qa → architect: 임시 격리에 동의. 다만 cycle 로그 요약은 실제 repo 에 남겨야 감사 추적이 가능하다는 의견 → cycles 에 요약 1줄만 append 하기로 절충.',
+		],
+		compromise:
+			'git/loop/logDecision 부작용은 임시 repo·임시 cwd·임시 디렉터리로 완전 격리하고, 실제 repo 에는 (1) report.md 최종 보고, (2) cycles 요약 로그만 남긴다.',
+		conclusion: 'git-flow·loop·logDecision 시연을 모두 임시 격리 환경에서 수행하고, 실제 repo 에는 최소 산출물(report.md + cycles 요약)만 기록한다.',
+		why: '실제 repo 의 git 히스토리·진행 상태(state.json)·결정 기록(decisions) 오염을 막으면서도 전체 골격 흐름과 투명성(감사 추적)을 동시에 시연할 수 있기 때문이다.',
+		impact: 'scripts/demo.mjs 의 격리 전략 확정. 통합 스모크를 반복 실행해도 실제 repo(특히 harness/decisions/)가 안전하다.',
+		linkedStep: 'US-010 (통합 데모)',
+	});
+	check('logDecision → decisions/*.md 생성됨 (임시 격리)', existsSync(decisionPath), decisionPath);
+	const decisionsDir = path.join(decisionTmp, 'harness', 'decisions');
+	decisionFiles = existsSync(decisionsDir) ? readdirSync(decisionsDir).filter((f) => f.endsWith('.md')) : [];
+	decisionBasename = path.basename(decisionPath);
+	check('데모 협의 결정 1건 생성됨 (임시 격리)', decisionFiles.length >= 1, `files=${decisionFiles.join(',')}`);
+} finally {
+	rmSync(decisionTmp, { recursive: true, force: true });
 }
-const decisionPath = logDecision(repoRoot, {
-	topic: '통합 데모에서 git-flow 와 loop 드라이버를 실제 repo 에 직접 적용할지, 임시 repo/상태로 격리할지',
-	raisedBy: 'architect',
-	claims: [
-		{
-			agent: 'architect',
-			claim: 'git-flow 시연은 throwaway 임시 git repo 에서만 수행해야 한다',
-			reason: '실제 repo 의 main 은 "미존재 시 1회 시드" 규약이라, 데모 커밋이 들어가면 부트스트랩 히스토리를 오염시킨다',
-		},
-		{
-			agent: 'qa',
-			claim: 'loop 드라이버 완주도 임시 cwd(demo state)에서 돌려야 한다',
-			reason: 'loop.mjs 는 cwd 의 harness/state.json 을 원자적으로 덮어쓰므로, 실제 state 를 건드리면 진행 상태가 손상된다',
-		},
-		{
-			agent: 'pm',
-			claim: '데모가 실제 repo 에 남기는 산출물은 decisions 1건 + report.md 채우기로 한정한다',
-			reason: '투명성(감사 추적)은 보장하되 부작용은 최소화해야 통합 스모크가 반복 실행에 안전하다',
-		},
-	],
-	rebuttals: [
-		'qa → architect: 임시 repo 격리에 동의. 다만 cycle 로그 요약은 실제 repo 에 남겨야 감사 추적이 가능하다는 의견 → cycles 에 요약 1줄만 append 하기로 절충.',
-	],
-	compromise:
-		'git/loop 부작용은 임시 repo·임시 cwd 로 완전 격리하고, 실제 repo 에는 (1) decisions 결정 1건, (2) report.md 최종 보고, (3) cycles 요약 로그만 남긴다.',
-	conclusion: 'git-flow 와 loop 완주는 임시 격리 환경에서 시연하고, 실제 repo 에는 최소 산출물만 기록한다.',
-	why: '실제 repo 의 git 히스토리·진행 상태(state.json) 오염을 막으면서도 전체 골격 흐름과 투명성(감사 추적)을 동시에 시연할 수 있기 때문이다.',
-	impact: 'scripts/demo.mjs 의 격리 전략 확정. 통합 스모크를 반복 실행해도 실제 repo 가 안전하다.',
-	linkedStep: 'US-010 (통합 데모)',
-});
-check('logDecision → harness/decisions/*.md 생성됨', existsSync(decisionPath), decisionPath);
-
-// 결정 디렉터리에 데모/예시 항목 존재 확인.
-const decisionsDir = path.join(repoRoot, 'harness', 'decisions');
-const decisionFiles = existsSync(decisionsDir) ? readdirSync(decisionsDir).filter((f) => f.endsWith('.md')) : [];
-check('harness/decisions/ 에 항목 존재(데모/예시 포함)', decisionFiles.length >= 1, `files=${decisionFiles.join(',')}`);
 
 // ──────────────────────────────────────────────────────────────────────────
 // 4) 기존 평가(eval-0001) 읽기 확인.
@@ -320,7 +320,7 @@ console.log('');
 console.log('=== DEMO 요약 ===');
 console.log(`  git-flow(임시 repo): seed→start→merge 시연`);
 console.log(`  loop(임시 cwd): 1-step 완주 = ${loopDone ? 'done' : '미완'} (${executedPhases.join('>')})`);
-console.log(`  decisions: ${decisionFiles.length}건 (데모/예시 포함), 신규 = ${path.basename(decisionPath)}`);
+console.log(`  decisions: ${decisionFiles.length}건 (임시 격리 시연 — 실제 repo 무오염), 신규 = ${decisionBasename}`);
 console.log(`  eval-0001: ${evalObj ? `종합 ${evalObj.score}/100, major ${evalObj.majorComplaints}건` : '읽기 실패'}`);
 console.log(`  report.md: 채워짐(placeholder 없음)`);
 console.log(`  실제 state.json: 무손상`);
@@ -413,9 +413,9 @@ function buildReport({ config, evalObj, executedPhases, loopDone, decisionFiles,
 		``,
 		`## 4. 주요 의사결정`,
 		``,
-		`> \`harness/decisions/\` 에서 발췌 (총 ${decisionFiles.length}건, 데모/예시 포함).`,
+		`> 통합 데모의 협의 결정 시연: 총 ${decisionFiles.length}건 (임시 격리 — 실제 \`harness/decisions/\` 는 변경하지 않음).`,
 		``,
-		...(decisionFiles.length ? decisionFiles.map((f) => `- \`harness/decisions/${f}\``) : ['- (결정 없음)']),
+		...(decisionFiles.length ? decisionFiles.map((f) => `- (임시 격리) \`${f}\``) : ['- (결정 없음)']),
 		``,
 		`## 5. 오류 및 수정`,
 		``,

@@ -7,6 +7,12 @@
 
 ## 현재 상태
 
+### 🟢 완료 — demo.mjs 결정 격리 + .gitignore 보강
+- **변경**: `demo.mjs` 가 실제 `harness/decisions/` 에 결정을 쓰고 멱등성 위해 `decision-*.md` 를 일괄 삭제하던 로직이 **실제 결정 기록(decision-0002 등)까지 지우는 데이터 손실 버그**였음 → `logDecision` 을 **임시 격리 디렉터리**에서 시연하도록 변경(git/loop 와 동일 격리 원칙). 실제 `harness/decisions/` 는 일절 건드리지 않음.
+- **추가**: `.gitignore` 에 `*.tsbuildinfo` 추가(빌드 캐시 산출물). 헤더 주석·report 섹션4·README 데모 설명 동기 갱신.
+- **검증**: 데모 재실행 후 `harness/decisions/`(0001·0002) 무손상 확인, `tsconfig.tsbuildinfo` ignored 확인, lint green, DEMO: PASS.
+- **마지막 갱신**: 2026-06-15 (기록자: 데모 격리 수정 세션)
+
 ### 🟢 완료 — 재작업 5회→투표 코드 강제 (확정 2·3)
 - **변경**: `loop.mjs` 에 `MAX_REWORK=5` + `computeTransition` 도입 — `debate` 의 `rework` 판정마다 `reworkCount++` 후 `implement` 되돌이, 5회 초과 시 `vote` 페이즈 분기, `vote→merge` 는 `state.gateOverride` + `done-gate --vote-override` 로 **주관 임계만 우회(결정적 게이트 유지)**. `state.mjs` 에 `gateOverride` 필드 추가. `git-flow.mjs` 가 `--vote-override` 전달.
 - **배경**: 평가에서 "`reworkCount` 가 스키마에만 있고 증가 코드 없음 → 문서와 코드 불일치" 발견 → 사용자가 코드 강제안(a) 선택. 투표 *내용*(다수결·캐스팅보트)은 종전대로 에이전트 수동 준수.

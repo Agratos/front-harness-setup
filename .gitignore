@@ -1,6 +1,7 @@
 # 의존성·빌드 산출물
 node_modules/
 dist/
+*.tsbuildinfo
 .yarn/cache/
 .yarn/install-state.gz
 .yarn/unplugged/
