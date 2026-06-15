@@ -141,6 +141,8 @@ node scripts/reset-project.mjs --name=my-app          # 미리보기
 node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
 ```
 
+> Claude Code 안에서는 슬래시 커맨드 **`/clear-project`** 로 실행하는 것을 권장합니다(`/clear` 는 빌트인 예약어라 `-project` 접미사 사용). 이 커맨드는 **미리보기 → 사용자 승인 → 적용 → Notion 실제 flush** 안전 절차로 위 스크립트를 감쌉니다. 정의: [.claude/commands/clear-project.md](../.claude/commands/clear-project.md).
+
 - **정리 대상**: `harness/` 런타임 산출물(`state.json`·`config.json`·`report.md`·`cycles` 로그·`decisions`·`evaluations`·`errors`), `.env` 토큰(→ `.env.example` 내용으로), 제품 정체성(`package.json`·`index.html`·`src/app/App.tsx` 의 `harness-setup` → 새 이름).
 - **가짜 통과 방지**: 이전 평가(`harness/evaluations/<id>.json`)를 제거합니다 — 안 그러면 새 프로젝트의 첫 merge 게이트가 옛 점수를 읽어 통과해 버립니다.
 - **Notion 초기화**: 프로젝트가 Notion 을 썼다면(`config.useMcp`) `harness/notion-outbox/dashboard-reset.json` 페이로드를 적재합니다. 다음 flush 때 오케스트레이터가 대시보드(계획·요약·결정 미러)를 비웁니다. `--notion`/`--no-notion` 으로 강제·억제할 수 있습니다.

@@ -7,6 +7,12 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 초기화 슬래시 커맨드 `/clear-project`
+- **추가**: `.claude/commands/clear-project.md` — `reset-project.mjs` 를 **미리보기→사용자 승인→적용→Notion 실제 flush** 안전 절차로 감싸는 슬래시 커맨드. 직접 `node` 실행의 파괴 위험·번거로움 해소.
+- 이름: `/clear` 는 Claude Code 빌트인(대화 비우기) 예약어라 `/clear-project` 사용(스크립트명은 reset-project 유지).
+- **문서 동기**: README·AGENTS 커맨드 목록, usage §6 에 커맨드 안내 추가.
+- **마지막 갱신**: 2026-06-15 (기록자: clear-project 커맨드 세션)
+
 ### 🟢 완료 — 새 프로젝트 초기화 스크립트(reset-project) + Notion 리셋
 - **추가**: `scripts/reset-project.mjs` — 복사 후 새 프로젝트로 쓸 때 잔존물 일괄 정리. 기본 dry-run, `--apply` 로 적용.
   - 정리: `harness/` 런타임 산출물(state·config·report·cycles·decisions·evaluations·errors), `.env` 토큰(→.env.example), 정체성(package.json·index.html·App.tsx 의 harness-setup→새 이름). **이전 평가 제거로 첫 merge 가짜 통과 방지.**
