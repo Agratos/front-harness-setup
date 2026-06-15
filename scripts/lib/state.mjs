@@ -52,6 +52,7 @@ function makeCheckpointToken(phaseSeq, phase, counter) {
  *   lastCommittedSha: string|null,
  *   scores: object,
  *   reworkCount: number,
+ *   gateOverride: boolean,
  *   status: 'init'|'running'|'blocked'|'done'
  * }}
  */
@@ -69,6 +70,10 @@ export function defaultState(planSteps = []) {
 		lastCommittedSha: null,
 		scores: {},
 		reworkCount: 0,
+		// 투표 오버라이드: 5회 재작업 후 에이전트 투표가 "주관 임계(90점) 대체"를 의결하면
+		// true 가 되어 다음 merge 의 done-gate 가 결정적 게이트만 강제(주관 임계 우회)하게 한다.
+		// 새 step 으로 넘어가면 false 로 초기화된다 (step 마다 독립).
+		gateOverride: false,
 		status: 'init',
 	};
 }

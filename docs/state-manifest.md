@@ -22,7 +22,8 @@
 | `branch`           | `string \| null`                             | 작업 브랜치 이름. 미설정이면 `null`.                                                                                                               |
 | `lastCommittedSha` | `string \| null`                             | 마지막 커밋의 SHA. **비-git 실행(`useGit=false`) 시에는 항상 `null`**.                                                                             |
 | `scores`           | `object`                                     | 평가 차원별 점수 누적(예: `{ correctness: 8, design: 7 }`). 초기값 `{}`.                                                                           |
-| `reworkCount`      | `number`                                     | 재작업(rework) 횟수. 동일 페이즈를 다시 실행한 누적 횟수입니다.                                                                                    |
+| `reworkCount`      | `number`                                     | 현재 step 의 재작업(rework) 횟수. `loop.mjs` 가 `debate` 의 `rework` 판정마다 1 증가시키고 `implement` 로 되돌립니다. `MAX_REWORK(=5)` 도달 후에도 `rework` 면 `vote` 로 분기합니다. step 이 바뀌면(merge→다음 decompose) 0 으로 초기화됩니다. |
+| `gateOverride`     | `boolean`                                    | 투표 오버라이드 플래그. `vote` 페이즈를 마치면 `true` 가 되어 다음 `merge` 의 done-gate 가 `--vote-override`(주관 임계만 우회, 결정적 게이트는 유지)로 호출됩니다. 새 step 진입 시 `false` 로 초기화. 초기값 `false`. |
 | `status`           | `'init' \| 'running' \| 'blocked' \| 'done'` | 실행 전체 상태. 초기값 `'init'`.                                                                                                                   |
 
 ---
@@ -85,7 +86,9 @@ phase 가 done 으로 간주됨  AND  committed === false
 - commit 이 아직 안 됨 → 재실행해야 함.
 - commit 은 됐지만 (3)의 `committed=true` 기록 전에 죽음 → 다시 실행해도 결과가 동일(멱등)하므로 안전.
 
-어느 쪽이든 **재실행이 안전**합니다. 따라서 정책을 단순화하여 "미커밋이면 무조건 멱등 재실행"으로 둡니다. 재실행되는 작업은 멱등이어야 하며(같은 입력→같은 산출), 재실행 시 `reworkCount` 를 증가시켜 추적합니다.
+어느 쪽이든 **재실행이 안전**합니다. 따라서 정책을 단순화하여 "미커밋이면 무조건 멱등 재실행"으로 둡니다. 재실행되는 작업은 멱등이어야 합니다(같은 입력→같은 산출).
+
+> 주의: 이 **크래시 재개(멱등 재실행)** 는 `reworkCount` 를 증가시키지 **않습니다**. `reworkCount` 는 `debate` 가 품질 미달로 `rework` 판정을 낸 경우(=의도된 재작업)에만 `loop.mjs` 가 증가시킵니다. 둘은 별개입니다.
 
 `committed=true` 인데 phase done 이면 `needsRerun` 은 `false` 입니다(정상 완료, 재개 불필요).
 

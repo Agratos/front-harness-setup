@@ -95,11 +95,16 @@ logDecision(repoRoot, {
 
 예시 산출물: `harness/decisions/example-0001.md` (스키마 데모).
 
-### 재작업 한도
+### 재작업 한도 (코드 강제)
 
-`evaluate`/`debate` 에서 임계치 미달이면 재작업합니다. `state.reworkCount` 로 추적하며 **최대 5회**(확정 2).
-5회 결렬 시 **에이전트 투표**로 결정합니다 — 다수결, 동률이면 CEO 캐스팅보트(확정 3). 투표 결과와
-표 분포를 decisions 에 기록한 뒤 다음 step 으로 진행합니다(완전 자율 유지, blocked 없음).
+`evaluate`/`debate` 에서 임계치 미달이면 재작업합니다. **카운트와 분기는 `loop.mjs` 가 코드로 강제**합니다:
+
+- `debate` 가 `rework` 판정이면 드라이버가 `state.reworkCount`++ 후 `implement` 로 되돌립니다 (step 바뀌면 0 초기화).
+- `reworkCount` 가 `MAX_REWORK(=5)` 에 도달한 뒤에도 `rework` 면 → `merge` 대신 **`vote` 페이즈**로 분기(확정 2).
+- 투표의 *내용*(다수결, 동률 시 CEO 캐스팅보트, 확정 3)은 에이전트가 수행하고 표 분포·결과를 decisions 에 기록합니다.
+- `vote` → `merge` 로 진행하며 `state.gateOverride=true` 가 done-gate 를 `--vote-override` 로 호출 → **주관 임계만 우회, 결정적 게이트는 유지**. 따라서 점수 정체로는 멈추지 않되 깨진 코드는 병합되지 않습니다.
+
+`debate` 결과는 평가 파일(`harness/evaluations/<id>.json`)의 히스테리시스 판정으로 자동 결정되며, 비대화형에서는 `--debate=pass|rework`(또는 env `HARNESS_DEBATE_OUTCOME`)로 주입할 수 있습니다.
 
 ---
 

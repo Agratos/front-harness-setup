@@ -90,3 +90,4 @@ decompose 단계에서 CEO 가 판정하고 근거를 decisions 에 기록한다
 | 일시 | 변경 | 출처 |
 |---|---|---|
 | 2026-06-12 | 엔티티 슬라이스 구조를 default-setup 방식(dto/·types/·mapper/ 최상위)에서 **scms-ems 방식**(`model/` 아래 dto·types·mapper·store + API 동작 단위 파일 분리 + 도메인 그룹 2단 중첩 허용)으로 전환. 단 mutation 의 mapper 경유와 `selectResult` envelope 어댑터는 v2 규약 유지 | `[사용자]` 지시 ("default-setup 말고 scms-ems 형태로") + 유지 항목 2건은 `[위임→Claude]` 제안을 사용자가 승인 ("추천하는 방향으로 부탁해") |
+| 2026-06-15 | **확정 2·3(재작업 5회→투표)을 코드 강제로 승격.** 그동안 `reworkCount` 는 state 스키마에만 있고 증가 로직이 없어 문서(="추적한다")와 코드가 어긋났음. `loop.mjs` 에 `computeTransition`/`MAX_REWORK=5` 도입: `debate` 의 `rework` 판정마다 `reworkCount++` 후 `implement` 되돌이, 5회 초과 시 `vote` 페이즈 분기, `vote→merge` 시 `gateOverride`+`done-gate --vote-override` 로 **주관 임계만 우회(결정적 게이트는 유지)**. 투표의 *내용*(다수결·캐스팅보트)은 종전대로 오케스트레이터/에이전트 수동 준수. self-test 시나리오 B 추가 | `[사용자]` 지시 ("a 로 부탁해" — 평가에서 발견된 코드/문서 불일치 해소안 중 코드 강제안 선택) |

@@ -42,8 +42,12 @@
 | `implement` | 에이전트     | 코드 구현 (ui/entity-modeler 등).                                                     |
 | `verify`    | **드라이버** | `done-gate --deterministic-only` (typecheck/lint/check-arch/test).                    |
 | `evaluate`  | 에이전트     | customer/quality/ux 채점 → `harness/evaluations/<id>.json` (종합 score + major 불만). |
-| `debate`    | 에이전트     | 평가 결과 토론·반박 → 재작업 결정.                                                    |
+| `debate`    | 에이전트     | 평가 결과 토론·반박 → 재작업 결정. **드라이버**가 결과(pass/rework)로 전이 분기.       |
+| `vote`      | 에이전트     | (분기) 재작업 5회 초과 시에만 진입. 다수결+CEO 캐스팅보트 → `harness/decisions/<id>.md`. |
 | `merge`     | **드라이버** | done-gate(결정적 + 평가 임계치) 통과 시 `git-flow merge-step`.                        |
+
+> `vote` 는 선형 시퀀스가 아니라 **분기 페이즈**입니다. `debate` 가 `rework` 판정을 냈는데
+> `reworkCount` 가 이미 5(=MAX_REWORK)에 도달했을 때만 `loop.mjs` 가 `merge` 대신 `vote` 로 보냅니다.
 
 ## done-gate 통과 시 merge
 
@@ -54,10 +58,17 @@ done-gate 는 **결정적 게이트 AND 평가 임계치(히스테리시스+래�
 - 유지: 래치 후 score ≥ 88 이면 계속 통과 (88~90 미세변동은 플래핑 없음).
 - 탈락: 래치 후 score < 88, 또는 major 불만 발생.
 
-## 재작업 한도 (≤5회)
+## 재작업 한도 (≤5회) — 코드 강제 (확정 2·3)
 
-`evaluate`/`debate` 에서 임계치 미달이면 재작업합니다. 재작업 횟수는 `state.reworkCount` 로 추적하며
-**최대 5회**입니다. 5회 결렬 시 에이전트 투표로 결정합니다(진짜 회의처럼). 다수결, 동률 시 CEO 캐스팅보트(확정 3). 투표 결과와 표 분포를 `harness/decisions/<id>.md` 에 기록한 뒤 다음 단계로 진행합니다(완전 자율 유지 — blocked 로 멈추지 않음).
+`evaluate`/`debate` 에서 임계치 미달이면 재작업합니다. **카운트·분기·진행은 `loop.mjs` 가 코드로 강제하고, 투표의 "내용"(누가 무엇에 표를 던지는가)만 에이전트가 수행**합니다.
+
+- **카운트 (코드)**: `debate` 가 `rework` 판정일 때마다 드라이버가 `state.reworkCount` 를 1 증가시키고 `implement` 로 되돌립니다. step 이 바뀌면 0 으로 초기화합니다.
+- **5회 초과 → 투표 (코드 분기)**: `reworkCount` 가 `MAX_REWORK(=5)` 에 도달한 뒤에도 `rework` 면, 드라이버가 `merge` 대신 **`vote` 페이즈**로 보냅니다.
+- **투표 내용 (에이전트)**: PM 이 투표를 소집(`.claude/agents/pm.md`)하고, 참여 에이전트가 1표씩 `주장:이유` 로 행사합니다. 다수결, 동률 시 **CEO 캐스팅보트**(`.claude/agents/ceo.md`, 확정 3). 표 분포·결과를 `harness/decisions/<id>.md` 에 기록합니다.
+- **투표 후 진행 (코드)**: `vote` 다음은 항상 `merge` 입니다. 이때 드라이버가 `state.gateOverride=true` 로 두어 `git-flow merge-step` 이 done-gate 를 `--vote-override` 로 호출합니다 → **주관 임계(90/88)만 우회**하고 **결정적 게이트(typecheck/lint/check-arch/test)는 그대로 강제**합니다.
+
+> 즉 **주관 점수 정체(90 미만)로는 루프가 멈추지 않지만(완전 자율 — blocked 없음), 깨진 코드는 투표로도 병합되지 않습니다.** 결정적 게이트가 계속 실패하면 `merge` 가 전진하지 못하고 같은 페이즈를 재실행합니다(고쳐야 할 실제 버그).
+> 검증: `node scripts/loop.selftest.mjs` 의 "시나리오 B: rework→vote 분기".
 
 ## 실행 루프 (의사 절차)
 

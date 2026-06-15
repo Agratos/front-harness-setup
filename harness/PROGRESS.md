@@ -7,6 +7,13 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 재작업 5회→투표 코드 강제 (확정 2·3)
+- **변경**: `loop.mjs` 에 `MAX_REWORK=5` + `computeTransition` 도입 — `debate` 의 `rework` 판정마다 `reworkCount++` 후 `implement` 되돌이, 5회 초과 시 `vote` 페이즈 분기, `vote→merge` 는 `state.gateOverride` + `done-gate --vote-override` 로 **주관 임계만 우회(결정적 게이트 유지)**. `state.mjs` 에 `gateOverride` 필드 추가. `git-flow.mjs` 가 `--vote-override` 전달.
+- **배경**: 평가에서 "`reworkCount` 가 스키마에만 있고 증가 코드 없음 → 문서와 코드 불일치" 발견 → 사용자가 코드 강제안(a) 선택. 투표 *내용*(다수결·캐스팅보트)은 종전대로 에이전트 수동 준수.
+- **문서 동기 갱신**: `run-cycle.md`·`usage.md`·`AGENTS.md`(강제 모델 표)·`state-manifest.md`·`status.md`·`pm.md`·README·사양서 변경 이력.
+- **검증**: `loop.selftest`(시나리오 B: rework→vote 추가) PASS + self-test 6종 PASS + 게이트 4종 green + `done-gate --vote-override` 동작 확인.
+- **마지막 갱신**: 2026-06-15 (기록자: 재작업/투표 코드화 세션)
+
 ### 🟢 완료 — 엔티티 구조 scms-ems 방식 전환 (step/07)
 - **변경**: `src/entities/example` 을 `model/`(dto·types·mapper·store) 세그먼트 + API 동작 단위 파일 분리로 재배치 (scms-ems 계승). mutation mapper 경유·`selectResult` 어댑터는 v2 규약 유지
 - **문서 동기 갱신**: `docs/fsd/entities.md`·`naming.md`, README, AGENTS.md, `.claude/agents/entity-modeler.md`, 사양서 변경 이력

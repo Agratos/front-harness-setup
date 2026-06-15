@@ -93,6 +93,7 @@ function parseArgs(argv) {
 		json: false,
 		deterministicOnly: false,
 		skipDeterministic: false,
+		voteOverride: false,
 		score: undefined,
 		majorComplaints: undefined,
 		stepId: undefined,
@@ -101,6 +102,7 @@ function parseArgs(argv) {
 		if (arg === '--json') opts.json = true;
 		else if (arg === '--deterministic-only') opts.deterministicOnly = true;
 		else if (arg === '--skip-deterministic') opts.skipDeterministic = true;
+		else if (arg === '--vote-override') opts.voteOverride = true;
 		else if (arg.startsWith('--score=')) opts.score = Number(arg.slice('--score='.length));
 		else if (arg.startsWith('--major-complaints='))
 			opts.majorComplaints = Number(arg.slice('--major-complaints='.length));
@@ -255,6 +257,21 @@ export function runDoneGate(opts, repoRoot) {
 	if (opts.deterministicOnly) {
 		result.passed = result.deterministic.passed;
 		return { exitCode: result.deterministic.passed ? 0 : 1, result };
+	}
+
+	// 투표 오버라이드: 재작업 5회(MAX_REWORK) 초과 후 에이전트 투표가 진행을 의결한 경우.
+	// 결정적 게이트는 위에서 이미 통과를 확인했고(미통과면 조기 return), 주관 평가 임계만 대체한다.
+	// → 깨진 코드(타입/린트/테스트/아키텍처 위반)는 절대 병합되지 않으면서도,
+	//   주관 점수 정체(90 미만)로는 루프가 영구히 멈추지 않게 한다(완전 자율 — 사양서 확정 2).
+	if (opts.voteOverride) {
+		result.evaluation = resolveEvaluation(opts, repoRoot); // 참고용(있으면 기록)
+		result.hysteresis = {
+			pass: true,
+			latched: false,
+			reason: '투표 오버라이드: 재작업 한도(5회) 초과 후 에이전트 투표로 주관 임계 대체 (결정적 게이트는 충족)',
+		};
+		result.passed = result.deterministic.passed;
+		return { exitCode: result.passed ? 0 : 1, result };
 	}
 
 	// 2) 평가 임계치 (히스테리시스 + 래치)
