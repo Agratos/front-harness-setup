@@ -48,4 +48,4 @@ jobs:
           node scripts/resume.selftest.mjs
           node scripts/reset-project.selftest.mjs
           node scripts/copy-project.selftest.mjs
-          node scripts/preflight.selftest.mjs
+          node scripts/init-project.selftest.mjs

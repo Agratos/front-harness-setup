@@ -1,6 +1,6 @@
 # /start-project — 프로젝트 시작 (Q&A → 계획 → 조건부 main 시드)
 
-`preflight` 통과 이후, 자율 개발 루프(`/run-cycle`)를 돌리기 **직전**에 한 번 실행하는 부트스트랩 커맨드입니다.
+`init-project` 통과 이후, 자율 개발 루프(`/run-cycle`)를 돌리기 **직전**에 한 번 실행하는 부트스트랩 커맨드입니다.
 deep-interview 식 Q&A 로 요구사항을 결정화하고, 계획(planSteps)을 세우며, git 사용 시 main 을 시드합니다.
 
 ## 동작 순서

@@ -1,7 +1,7 @@
 # /git-flow — git-flow 오케스트레이션
 
 harness-setup 자율 개발 루프에서 **브랜치 생성 → step 작업 → main 병합**을 관리하는 게이트입니다.
-`preflight` 이후, 각 step 작업의 시작·종료 시 호출됩니다.
+`init-project` 이후, 각 step 작업의 시작·종료 시 호출됩니다.
 
 모든 명령은 `harness/config.json` 의 `skipGitFlow`(= `useGit=false`) 를 먼저 확인하며,
 `skipGitFlow=true` 면 **아무 것도 하지 않고(no-op) exit 0** 으로 종료합니다.
@@ -97,7 +97,7 @@ HARNESS_GATE_OK=1 node scripts/git-flow.mjs merge-step 01 login
 
 ## useGit=false 우회
 
-`preflight` 에서 `useGit=false` 로 결정되면 `harness/config.json` 에 `skipGitFlow=true` 가 기록되며,
+`init-project` 에서 `useGit=false` 로 결정되면 `harness/config.json` 에 `skipGitFlow=true` 가 기록되며,
 `seed-main` / `start-step` / `merge-step` 모두 no-op 로그 후 exit 0 으로 빠집니다 (git 미사용 프로젝트 지원).
 
 ## 자가 검증

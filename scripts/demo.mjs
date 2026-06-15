@@ -2,7 +2,7 @@
 // demo.mjs — 통합 스모크 데모 (US-010, AC5/AC6/통합)
 //
 // 목적:
-//   하니스 골격(preflight → git-flow → loop 드라이버 → 협의 로그 → 평가 → 최종 보고)의
+//   하니스 골격(init-project → git-flow → loop 드라이버 → 협의 로그 → 평가 → 최종 보고)의
 //   전체 흐름을 **실제 저장소의 git 히스토리를 오염시키지 않고** 한 번에 시연합니다.
 //
 // 안전 원칙 (오염 금지):
@@ -49,13 +49,13 @@ function section(title) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// 0) PREFLIGHT 확인 — preflight 가 이미 실행되어 harness/config.json 이 존재해야 함.
+// 0) INIT-PROJECT 확인 — init-project 가 이미 실행되어 harness/config.json 이 존재해야 함.
 // ──────────────────────────────────────────────────────────────────────────
-section('0) PREFLIGHT 확인 (harness/config.json 존재 — preflight 선행)');
+section('0) INIT-PROJECT 확인 (harness/config.json 존재 — init-project 선행)');
 const configPath = path.join(repoRoot, 'harness', 'config.json');
 let config = {};
 const configExists = existsSync(configPath);
-check('harness/config.json 존재 (preflight 선행)', configExists);
+check('harness/config.json 존재 (init-project 선행)', configExists);
 if (configExists) {
 	try {
 		config = JSON.parse(readFileSync(configPath, 'utf8'));

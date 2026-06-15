@@ -46,7 +46,7 @@ node scripts/copy-project.mjs --dest=<dest> --name=<name>
 - `cd <dest>/<name>`
 - `yarn install`
 - `.env` 에 **새 토큰** 입력(또는 MCP 미사용이면 비워둠) — 원본의 토큰은 복사되지 않았습니다.
-- `node scripts/preflight.mjs` → `/start-project` → `/run-cycle`
+- `node scripts/init-project.mjs` → `/start-project` → `/run-cycle`
 - (선택) 새 git 이력: `git init -b main`. 복사본엔 `.git` 이 없어 깨끗한 상태에서 시작합니다.
 
 ## 인자
@@ -63,4 +63,4 @@ node scripts/copy-project.mjs --dest=<dest> --name=<name>
 - 자가검증: `node scripts/copy-project.selftest.mjs` (CI self-test 에 포함).
 - 단축 실행: `yarn copy --dest=<v> --name=<v>`.
 - 이미 복사된 저장소를 **제자리에서** 초기화만 하려면 `/clear-project` 를 쓰세요.
-- 전체 흐름: **`/copy-project`(복사+초기화)** → `cd` → `yarn install` → `/preflight` → `/start-project` → `/run-cycle`.
+- 전체 흐름: **`/copy-project`(복사+초기화)** → `cd` → `yarn install` → `/init-project` → `/start-project` → `/run-cycle`.

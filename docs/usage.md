@@ -27,7 +27,7 @@
 
 | 스크립트              | 역할                                                                          | 주요 인자                                                                                     |
 | --------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `preflight.mjs`       | git 존재 확인 + (필요 시) `git init -b main` + `harness/config.json` 기록     | `--use-git[=bool]`, `--use-mcp[=bool]` / 환경변수 `HARNESS_USE_GIT`, `HARNESS_USE_MCP`        |
+| `init-project.mjs`       | git 존재 확인 + (필요 시) `git init -b main` + `harness/config.json` 기록     | `--use-git[=bool]`, `--use-mcp[=bool]` / 환경변수 `HARNESS_USE_GIT`, `HARNESS_USE_MCP`        |
 | `loop.mjs`            | 재호출 드라이버 (1 호출 = 1 페이즈)                                           | `--init "<s1>,<s2>"` (planSteps 시드, init 상태에서만)                                        |
 | `git-flow.mjs`        | `seed-main` / `start-step <nn> <slug>` / `merge-step <nn> <slug> [--gate-ok]` | `skipGitFlow=true` 면 전 명령 no-op                                                           |
 | `done-gate.mjs`       | 완료 게이트 (결정적 4종 + 평가 임계치)                                        | `--deterministic-only`, `--json`, `--score=N`, `--major-complaints=N`, `--skip-deterministic` |
@@ -39,7 +39,7 @@
 
 | 커맨드           | 감싸는 스크립트                              | 설명                                  |
 | ---------------- | -------------------------------------------- | ------------------------------------- |
-| `/preflight`     | `preflight.mjs`                              | git/MCP 게이트 (인터뷰보다 먼저 실행) |
+| `/init-project`     | `init-project.mjs`                              | git/MCP 게이트 (인터뷰보다 먼저 실행) |
 | `/start-project` | `loop.mjs --init` + `git-flow.mjs seed-main` | Q&A → 계획 → 조건부 main 시드         |
 | `/run-cycle`     | `loop.mjs` 재호출 + 협의 위임                | 사이클 완주의 심장                    |
 | `/status`        | `harness/state.json` 조회                    | 진행 상황 표시                        |
