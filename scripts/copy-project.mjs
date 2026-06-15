@@ -71,44 +71,42 @@ export function doCopy(repoRoot, target) {
 	cpSync(repoRoot, target, { recursive: true, filter: makeCopyFilter(repoRoot) });
 }
 
-/** 복사본 안에서 reset-project 를 --apply 로 실행(로컬 초기화). */
-function runResetInCopy(target, name, notion) {
+/** 복사본 안에서 reset-project 를 --apply 로 실행(로컬 정리 = "빈 껍데기"). */
+function runResetInCopy(target, name) {
 	const resetScript = path.join(target, 'scripts', 'reset-project.mjs');
 	if (!existsSync(resetScript)) return { ok: false, note: 'reset-project.mjs 없음(복사 실패?)' };
-	const args = [resetScript, `--name=${name}`, '--apply'];
-	if (notion === false) args.push('--no-notion');
-	else if (notion === true) args.push('--notion');
+	// copy 는 현재 프로젝트에 종속된 산출물·토큰·정체성을 비운 "빈 껍데기" 로만 가져간다.
+	// Notion 은 건드리지 않는다(--no-notion). 새 프로젝트의 Notion 대시보드 초기화·접속 확인은
+	// /start-project(연동 확인 단계)에서 사용자가 준 URL 로 수행한다.
+	const args = [resetScript, `--name=${name}`, '--apply', '--no-notion'];
 	try {
 		execFileSync('node', args, { cwd: target, stdio: 'inherit' });
-		return { ok: true, note: 'reset --apply 완료' };
+		return { ok: true, note: 'reset --apply --no-notion 완료 (빈 껍데기)' };
 	} catch (err) {
 		return { ok: false, note: `reset 실패 exit ${err.status ?? 1}` };
 	}
 }
 
-/** CLI 인자: --dest=<v>/--dest <v>, --name=<v>/--name <v>, --no-clear, --notion|--no-notion */
+/** CLI 인자: --dest=<v>/--dest <v>, --name=<v>/--name <v>, --no-clear */
 function parseArgs(argv) {
 	let dest = null;
 	let name = null;
 	let clear = true;
-	let notion = null;
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === '--no-clear') clear = false;
-		else if (a === '--notion') notion = true;
-		else if (a === '--no-notion') notion = false;
 		else if (a.startsWith('--dest=')) dest = a.slice('--dest='.length);
 		else if (a === '--dest') dest = argv[++i] ?? null;
 		else if (a.startsWith('--name=')) name = a.slice('--name='.length);
 		else if (a === '--name') name = argv[++i] ?? null;
 	}
-	return { dest, name, clear, notion };
+	return { dest, name, clear };
 }
 
 function main() {
 	const argv = process.argv.slice(2);
 	const repoRoot = defaultRepoRoot;
-	const { dest, name: nameArg, clear, notion } = parseArgs(argv);
+	const { dest, name: nameArg, clear } = parseArgs(argv);
 
 	if (!dest) {
 		console.error('[copy-project] --dest=<부모경로> 가 필요합니다. 예: --dest=../ --name=my-app');
@@ -143,11 +141,11 @@ function main() {
 	doCopy(repoRoot, target);
 	console.log(`복사 완료 → ${target}`);
 
-	// 복사본 초기화(clear)
+	// 복사본 초기화(clear) — 빈 껍데기화. Notion 은 건드리지 않음(--no-notion).
 	if (clear) {
 		console.log('');
-		console.log('복사본 초기화(reset-project --apply) 실행:');
-		const r = runResetInCopy(target, name, notion);
+		console.log('복사본 빈 껍데기화(reset-project --apply --no-notion) 실행:');
+		const r = runResetInCopy(target, name);
 		console.log(`초기화: ${r.ok ? 'OK' : 'FAIL'} — ${r.note}`);
 		if (!r.ok) process.exit(1);
 	}
@@ -157,10 +155,8 @@ function main() {
 	console.log(`  1) cd "${target}"`);
 	console.log('  2) yarn install');
 	console.log('  3) .env 에 새 토큰 입력(또는 MCP 미사용이면 비워둠)');
-	console.log('  4) node scripts/init-project.mjs → /start-project → /run-cycle');
-	if (clear) {
-		console.log('  (Notion 사용 시) 복사본의 harness/notion-outbox/dashboard-reset.json 을 flush 하면 대시보드가 초기화됩니다.');
-	}
+	console.log('  4) /start-project — git/Notion 주소를 넣어 접속 확인 + Notion 대시보드 초기화 후 인터뷰');
+	console.log('  5) /run-cycle');
 	process.exit(0);
 }
 

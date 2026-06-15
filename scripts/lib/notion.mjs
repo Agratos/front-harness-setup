@@ -164,7 +164,7 @@ export function mirrorDecisionComment(decisionId, turn, opts = {}) {
  * 게이트: useMcp=false 면 no-op({skipped:true}). 단 opts.force=true 면 게이트를 우회한다
  *   (reset-project 가 config 삭제 전에 useMcp 를 이미 판단했을 때 사용).
  *
- * @param {{repoRoot?:string, projectName?:string, id?:string, force?:boolean}} [opts]
+ * @param {{repoRoot?:string, projectName?:string, pageId?:string, id?:string, force?:boolean}} [opts]
  * @returns {{skipped:boolean, outboxPath?:string, payload?:object}}
  */
 export function resetDashboard(opts = {}) {
@@ -176,6 +176,8 @@ export function resetDashboard(opts = {}) {
 		kind: 'dashboard.reset',
 		// 멱등 키: 같은 대시보드 페이지를 대상으로 함(upsert 와 동일 페이지).
 		idempotencyKey: 'dashboard-main',
+		// 비울 실제 Notion 페이지 id (flush 레이어가 이 페이지를 비운다). null 이면 미지정.
+		pageId: opts.pageId ?? null,
 		action: 'archive-and-clear',
 		// flush 레이어가 비울 대상: 계획 DB 행 / 요약 카드 / 결정 댓글 미러.
 		clear: ['planStepsDb.rows', 'summaryCards', 'decisionComments'],

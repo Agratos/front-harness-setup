@@ -7,6 +7,13 @@
 
 ## 현재 상태
 
+### 🟢 완료 — Notion 책임 재배치 + start 0번(--fresh) 제거
+- **start `--fresh` 제거**: 무조건 `/copy-project` 로 복사해 오는 전제 → `/start-project` 의 제자리 정리 단계 삭제. start = 1) 연동 확인+Notion 초기화 → 2) Q&A → 3) 계획 → 4) main 시드.
+- **copy = 빈 껍데기**: `copy-project.mjs` 가 reset 을 항상 `--no-notion` 으로 호출. 현재 프로젝트(harness-setup)에 종속된 테스트 산출물·토큰·정체성만 비우고 **Notion 은 건드리지 않음**.
+- **Notion 초기화는 start 로 이동**: `init-project.mjs` 가 notion-url 접근 확인 성공 시 `resetDashboard()` 로 대시보드 초기화 페이로드(pageId 포함) 적재. 실제 flush 는 오케스트레이터/MCP. `notion.mjs resetDashboard` 에 pageId 필드 추가.
+- **검증**: lint green, selftest(copy/reset/init/eval) PASS, init-project 스모크에서 Notion 접근 OK(200)+페이로드 적재 실측(임시 cwd, 실제 repo 무오염).
+- **마지막 갱신**: 2026-06-15 (기록자: Notion 책임 재배치 세션)
+
 ### 🟢 완료 — 부트스트랩 커맨드 통합 (4개 → 2개)
 - **통합**: `/clear-project`·`/init-project` 커맨드를 `/start-project` 로 흡수. `/start-project` 가 0)`--fresh` 제자리 정리 → 1) git/Notion 연동 확인 → 2) Q&A → 3) 계획 시드 → 4) main 시드를 순서대로 오케스트레이션. `copy-project` 는 유지.
 - **결과**: `.claude/commands/` = copy-project / start-project / run-cycle / status / git-flow / evaluate (6개). 부트스트랩 커맨드는 copy-project·start-project 2개.

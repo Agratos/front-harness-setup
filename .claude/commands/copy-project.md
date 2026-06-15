@@ -18,7 +18,7 @@
 
 > 최종 생성 위치는 `<dest>/<name>` 입니다.
 
-### 2) 바로 복사 + 초기화 (미리보기·재승인 없음)
+### 2) 바로 복사 + 빈 껍데기화 (미리보기·재승인 없음)
 
 ```bash
 node scripts/copy-project.mjs --dest=<dest> --name=<name>
@@ -27,21 +27,13 @@ node scripts/copy-project.mjs --dest=<dest> --name=<name>
 이 한 번으로:
 
 - 저장소를 `<dest>/<name>` 으로 복사합니다. **제외**: `node_modules` · `.git` · `dist` · `.yarn`(cache·unplugged·install-state) · **`.env`(토큰)** · `*.tsbuildinfo` · `.omc`.
-- 복사본 안에서 `reset-project.mjs --apply` 를 실행해 초기화합니다(런타임 산출물 정리, 이전 평가 제거로 가짜 통과 방지, 정체성 치환, Notion outbox 정리 + `dashboard-reset` 적재).
-- Notion 리셋을 생략하려면 `--no-notion`, 초기화 자체를 생략(복사만)하려면 `--no-clear` 를 덧붙입니다.
+- 복사본 안에서 `reset-project.mjs --apply --no-notion` 을 실행해 **빈 껍데기로 정리**합니다: 런타임 산출물·이전 평가(가짜 통과 방지)·정체성·`.env` 토큰·Notion outbox 를 비웁니다.
+- **Notion 대시보드는 건드리지 않습니다.** 현재 프로젝트(harness-setup)에 종속된 테스트 데이터가 따라오지 않게 비운 상태로만 가져오고, **Notion 초기화·접속 확인은 새 프로젝트의 `/start-project` 에서 새 URL 로 수행**합니다.
+- 복사만 하고 정리를 생략하려면 `--no-clear` 를 덧붙입니다.
 
 > 거부되는 경우: 대상이 이미 존재하고 비어있지 않음 / 대상이 이 저장소 내부 경로. 이때는 다른 경로·이름을 다시 묻습니다.
 
-### 3) Notion 실제 초기화 (대시보드를 썼다면)
-
-복사본에 `<dest>/<name>/harness/notion-outbox/dashboard-reset.json` 이 생기면, 그 페이로드대로
-**Notion 대시보드를 실제로 비웁니다**(MCP 연동 시 오케스트레이터가 수행):
-
-- `clear`(계획 DB 행·요약 카드·결정 댓글 미러)를 비우고 `resetCallout`(프로젝트명·점수)을 초기화.
-- 처리 후 복사본의 `dashboard-reset.json` 을 제거합니다(중복 적용 방지).
-- MCP 미연동/비대화형이면 건너뛰고 수동 초기화를 안내합니다.
-
-### 4) 다음 단계 안내
+### 3) 다음 단계 안내
 
 - `cd <dest>/<name>`
 - `yarn install`
@@ -55,12 +47,11 @@ node scripts/copy-project.mjs --dest=<dest> --name=<name>
 | ------------- | ----------------------------- | ------------------------------ |
 | 대상 부모경로 | `--dest=<v>` / `--dest <v>`   | (필수)                         |
 | 프로젝트명    | `--name=<v>` / `--name <v>`   | (필수)                         |
-| 초기화 생략   | `--no-clear`                  | 미지정 시 복사 후 초기화 수행  |
-| Notion 리셋   | `--notion` / `--no-notion`    | 복사본 `config.useMcp` 따름    |
+| 정리 생략     | `--no-clear`                  | 미지정 시 복사 후 빈 껍데기 정리 |
 
 ## 비고
 
 - 자가검증: `node scripts/copy-project.selftest.mjs` (CI self-test 에 포함).
 - 단축 실행: `yarn copy --dest=<v> --name=<v>`.
-- 이미 복사된 저장소를 **제자리에서** 초기화하며 시작하려면 `/start-project --fresh` 를 쓰세요.
-- 전체 흐름: **`/copy-project`(복사+초기화)** → `cd` → `yarn install` → `/start-project` → `/run-cycle`.
+- 복사 없이 제자리에서 다시 시작해야 하면 `yarn reset --apply` 로 직접 정리할 수 있습니다(특수 상황).
+- 전체 흐름: **`/copy-project`(복사+빈 껍데기)** → `cd` → `yarn install` → `/start-project`(연동확인·Notion 초기화·Q&A·계획) → `/run-cycle`.

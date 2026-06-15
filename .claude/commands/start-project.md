@@ -1,27 +1,15 @@
-# /start-project — 프로젝트 시작 (정리 → 연동확인 → Q&A·계획·시드)
+# /start-project — 프로젝트 시작 (연동확인·Notion 초기화 → Q&A·계획·시드)
 
-자율 개발 루프(`/run-cycle`)를 돌리기 **직전에 한 번** 실행하는 부트스트랩 커맨드입니다.
-이전의 `/clear-project`(제자리 정리)와 `/init-project`(연동 확인)를 **단계로 흡수**해, 프로젝트 시작 전체를 한 커맨드로 처리합니다.
+`/copy-project` 로 복사해 온 새 프로젝트 폴더에서, 자율 개발 루프(`/run-cycle`)를 돌리기 **직전에 한 번** 실행하는 부트스트랩 커맨드입니다. 이전의 `/init-project`(연동 확인)를 **단계로 흡수**했습니다.
 
-> 스크립트는 그대로 재사용합니다: `reset-project.mjs`(정리) · `init-project.mjs`(연동 확인) · `loop.mjs --init`(계획) · `git-flow.mjs seed-main`(시드). 이 커맨드는 그 순서를 오케스트레이션합니다.
-> 다른 경로로 **복사하며 시작**하려면 `/copy-project`(복사 후 자동 정리)를 먼저 쓰고, 그 폴더에서 이 커맨드를 1번 단계부터 실행하세요.
+> 정리(이전 산출물·토큰·정체성 비우기)는 **`/copy-project` 가 복사 시 이미 수행**합니다(빈 껍데기로 가져옴). 그래서 이 커맨드에는 별도 정리 단계가 없습니다.
+> 스크립트는 그대로 재사용합니다: `init-project.mjs`(연동 확인·Notion 초기화) · `loop.mjs --init`(계획) · `git-flow.mjs seed-main`(시드).
 
 ## 동작 순서
 
-### 0) (선택 `--fresh`) 제자리 초기화 — 파괴적
+### 1) 연동 주소 받기 → 접속 확인 + Notion 대시보드 초기화
 
-복사 없이 **현재 폴더**를 새 프로젝트로 쓸 때만 수행합니다. 이전 산출물·`.env` 토큰·정체성·Notion outbox 를 정리합니다. 파괴적이므로 **미리보기 → 사용자 승인 → 적용** 순서로만 진행합니다:
-
-```bash
-node scripts/reset-project.mjs --name=<이름>          # 미리보기(dry-run)
-node scripts/reset-project.mjs --name=<이름> --apply  # 적용
-```
-
-> `/copy-project` 로 복사해 온 경우엔 복사 시 이미 초기화되므로 이 단계를 건너뜁니다.
-
-### 1) 연동 접근 확인 (git 원격 · Notion)
-
-git/MCP 사용 여부와 주소를 받아 **실제 접근 가능한지 확인**하고 `harness/config.json` 에 기록합니다:
+사용자에게 **git 원격 주소**와 (사용 시) **Notion 대시보드 페이지 URL** 을 받아 실제 접근을 확인하고, Notion 은 새 프로젝트용으로 초기화합니다:
 
 ```bash
 node scripts/init-project.mjs --use-mcp=true \
@@ -30,12 +18,14 @@ node scripts/init-project.mjs --use-mcp=true \
 ```
 
 - **git**: `git ls-remote` 로 접근·인증 확인 → 성공 시 `origin` 연결.
-- **Notion**: URL 에서 page id 추출 → `NOTION_TOKEN` 으로 페이지 조회(integration 연결 확인) → page id 저장.
-- 실패는 차단하지 않고 경고만(자율 유지). 대화형에서는 `AskUserQuestion` 으로 사용 여부·주소를 물어 전달하고 ✅/❌ 결과를 보여줍니다.
+- **Notion**: URL 에서 page id 추출 → `NOTION_TOKEN` 으로 페이지 조회(integration 연결 확인) → **대시보드 초기화 페이로드(`dashboard-reset`)를 적재**합니다. 새 프로젝트이므로 이전 내용을 비웁니다.
+- 결과를 ✅/❌ 로 보여주고, 실패는 차단하지 않고 경고만(자율 유지). 대화형에서는 `AskUserQuestion` 으로 주소를 받습니다.
+
+> **Notion 실제 비우기(flush)**: 적재된 `harness/notion-outbox/dashboard-reset.json` 을 오케스트레이터가 MCP 로 flush 해 대시보드(계획 DB·요약·결정 미러)를 비웁니다. MCP 미연동/비대화형이면 outbox 페이로드만 남기고 다음 flush 로 미룹니다.
 
 ### 2) deep-interview 식 Q&A (요구사항 결정화)
 
-핵심 질문으로 모호성을 제거합니다(충분히 명확하면 건너뜀):
+연동 확인이 끝나면 핵심 질문으로 모호성을 제거합니다(충분히 명확하면 건너뜀):
 
 - **목표/범위**: 무엇을 만드는가? 완료의 정의는?
 - **페르소나**: 누가 쓰는가? 핵심 시나리오 1~2개.
@@ -61,10 +51,9 @@ node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-
 ## 실행 요약
 
 ```bash
-# (제자리 새 프로젝트면) 0) 정리
-node scripts/reset-project.mjs --name=my-app --apply
-# 1) 연동 확인
+# 1) 연동 확인 + Notion 초기화 (git/Notion 주소 입력)
 node scripts/init-project.mjs --use-mcp=true --git-remote=<url> --notion-url=<url>
+#    → Notion dashboard-reset 적재 → 오케스트레이터가 MCP flush 로 대시보드 비움
 # 2) (대화형) Q&A → planSteps 확정
 # 3) 계획 시드
 node scripts/loop.mjs --init "01-login,02-dashboard"
@@ -78,6 +67,6 @@ node scripts/git-flow.mjs seed-main
 
 ## 비고
 
-- 비대화형(CI/자율 루프)에서는 Q&A 를 건너뛰고 `--init` 으로 planSteps 를 직접 주입하며, 연동값은 인자/환경변수로 주입합니다.
+- 정리가 필요한 특수 상황(복사 없이 제자리에서 다시 시작)에는 `yarn reset --apply` 를 직접 쓸 수 있습니다. 일반 흐름은 `/copy-project` 로 복사해 오는 것을 전제합니다.
+- 비대화형(CI/자율 루프)에서는 Q&A 를 건너뛰고 `--init` 으로 planSteps 를, 연동값은 인자/환경변수로 주입합니다.
 - 사용자 전역 규칙상 범위/옵션을 되묻지 않고 즉시 실행해야 하는 맥락에서는, 합리적 기본 planSteps 를 도출해 바로 시드하고 진행합니다.
-- 단축 실행: 정리=`yarn reset`, 복사+정리=`yarn copy`.
