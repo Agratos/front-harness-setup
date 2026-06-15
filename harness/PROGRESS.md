@@ -7,6 +7,15 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 새 프로젝트 초기화 스크립트(reset-project) + Notion 리셋
+- **추가**: `scripts/reset-project.mjs` — 복사 후 새 프로젝트로 쓸 때 잔존물 일괄 정리. 기본 dry-run, `--apply` 로 적용.
+  - 정리: `harness/` 런타임 산출물(state·config·report·cycles·decisions·evaluations·errors), `.env` 토큰(→.env.example), 정체성(package.json·index.html·App.tsx 의 harness-setup→새 이름). **이전 평가 제거로 첫 merge 가짜 통과 방지.**
+  - **Notion 리셋**: `config.useMcp` 면 `notion.mjs` 의 신규 `resetDashboard()` 로 `harness/notion-outbox/dashboard-reset.json` 적재 → 다음 flush 때 대시보드 초기화. `--notion`/`--no-notion` 오버라이드.
+  - 멱등(2차 실행 0건), example-/.gitkeep·하네스 엔진 보존, git 이력은 안내만.
+- **추가 검증**: `scripts/reset-project.selftest.mjs`(25 체크) — CI self-test 8종으로 편입.
+- **문서 동기**: README(빠른시작 0-1·구조·자가검증), AGENTS(scripts 맵), usage(§6 신설 + 데모 설명 정정), package.json(`yarn reset`).
+- **마지막 갱신**: 2026-06-15 (기록자: reset-project 세션)
+
 ### 🟢 완료 — demo.mjs 결정 격리 + .gitignore 보강
 - **변경**: `demo.mjs` 가 실제 `harness/decisions/` 에 결정을 쓰고 멱등성 위해 `decision-*.md` 를 일괄 삭제하던 로직이 **실제 결정 기록(decision-0002 등)까지 지우는 데이터 손실 버그**였음 → `logDecision` 을 **임시 격리 디렉터리**에서 시연하도록 변경(git/loop 와 동일 격리 원칙). 실제 `harness/decisions/` 는 일절 건드리지 않음.
 - **추가**: `.gitignore` 에 `*.tsbuildinfo` 추가(빌드 캐시 산출물). 헤더 주석·report 섹션4·README 데모 설명 동기 갱신.

@@ -14,7 +14,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest",
 		"test:run": "vitest run",
-		"check:arch": "node scripts/check-arch.js"
+		"check:arch": "node scripts/check-arch.js",
+		"reset": "node scripts/reset-project.mjs"
 	},
 	"dependencies": {
 		"@mantine/core": "^8.2.7",
