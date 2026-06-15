@@ -37,7 +37,8 @@ node scripts/eval-playwright.mjs      # harness/evaluations/<id>.{md,json}
 ```
 
 Claude Code 안에서는 위 스크립트를 감싼 슬래시 커맨드로도 실행합니다:
-`/preflight` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
+(복사 직후 1회 `/clear-project` →) `/preflight` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
+(`/clear-project` 는 새 프로젝트 초기화 — 미리보기→승인→적용 안전 절차로 0-1 단계를 감쌉니다.)
 
 ### 통합 데모로 한 번에 흐름 보기
 
