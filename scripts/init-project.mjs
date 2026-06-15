@@ -15,6 +15,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { resetDashboard } from './lib/notion.mjs';
+import { flushOutbox } from './lib/notion-api.mjs';
 
 const repoRoot = process.cwd();
 const harnessDir = path.join(repoRoot, 'harness');
@@ -254,6 +255,17 @@ async function main() {
 	writeConfig(config);
 	console.log(`config written: ${path.relative(repoRoot, configPath)}`);
 	console.log(`skipGitFlow=${config.skipGitFlow}`);
+
+	// 적재된 outbox(대시보드 초기화 등)를 실제 Notion 에 반영(best-effort). 실패해도 진행 차단 안 함.
+	if (useMcp) {
+		try {
+			const fr = await flushOutbox(repoRoot);
+			if (!fr.skipped) console.log(`notion flush: sent=${fr.sent} failed=${fr.failed} (대시보드 초기화 라이브 반영)`);
+			else console.log(`notion flush: skip (${fr.reason})`);
+		} catch {
+			/* flush 실패는 best-effort — 무시 */
+		}
+	}
 
 	// 연동 확인 실패가 있으면 비-제로 힌트를 남기되, 자율 흐름을 막지 않도록 exit 0 유지.
 	const warnings = [];

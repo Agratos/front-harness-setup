@@ -18,7 +18,7 @@
 //   needsRerun(state) 가 true(=committed=false 인데 phase 가 done 표시) 면
 //   건너뛰지 않고 현재 페이즈를 다시 실행합니다.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -301,11 +301,30 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	// 실패는 루프 진행에 영향 없음(미러는 부수효과). 실제 flush 는 오케스트레이터/MCP 가 수행.
 	try {
 		mirrorDashboardToNotion(repoRoot, advanced);
+		spawnNotionFlush(repoRoot);
 	} catch {
-		/* notion 미러 실패 무시 */
+		/* notion 미러/flush 실패는 루프에 영향 없음 */
 	}
 
 	return { state: advanced, executedPhase: phase, rerun, note, done };
+}
+
+/** 적재된 outbox 를 실제 Notion 에 반영(best-effort). useMcp=true 일 때만 별도 프로세스로 flush. */
+function spawnNotionFlush(repoRoot) {
+	try {
+		const cfgPath = path.join(repoRoot, 'harness', 'config.json');
+		if (!existsSync(cfgPath)) return;
+		if (JSON.parse(readFileSync(cfgPath, 'utf8')).useMcp !== true) return; // 비-MCP 면 프로세스 spawn 안 함
+	} catch {
+		return;
+	}
+	const flush = path.join(repoRoot, 'scripts', 'notion-flush.mjs');
+	if (!existsSync(flush)) return;
+	try {
+		execFileSync('node', [flush], { cwd: repoRoot, stdio: 'ignore', timeout: 30000 });
+	} catch {
+		/* flush 실패/타임아웃은 best-effort — 무시(outbox 에 남아 다음에 재시도) */
+	}
 }
 
 /** 현재 상태를 Notion 대시보드 갱신 페이로드로 변환해 적재(upsertDashboard, useMcp 게이트). */

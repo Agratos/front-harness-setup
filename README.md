@@ -69,6 +69,7 @@ node scripts/log.selftest.mjs         # 로깅 헬퍼
 node scripts/reset-project.selftest.mjs  # 제자리 초기화(멱등·Notion 리셋)
 node scripts/copy-project.selftest.mjs   # 복사 제외 필터·대상 검증
 node scripts/init-project.selftest.mjs      # Notion page id 추출
+node scripts/notion-api.selftest.mjs        # Notion flush 빌더·게이트
 ```
 
 ## 구조 개요
@@ -85,8 +86,9 @@ harness-setup/
 │  ├─ demo.mjs             # 통합 스모크 데모
 │  ├─ copy-project.mjs     # 다른 경로로 복사 + 초기화 (새 프로젝트 시작)
 │  ├─ reset-project.mjs    # 제자리 초기화 (산출물·토큰·정체성·Notion)
+│  ├─ notion-flush.mjs     # outbox → 실제 Notion 반영(flush, REST)
 │  ├─ *.selftest.mjs       # 각 모듈 자가검증
-│  └─ lib/                 # state / log / rubric / teardown / notion
+│  └─ lib/                 # state / log / rubric / teardown / notion(적재) · notion-api(flush)
 ├─ .claude/
 │  ├─ agents/          # 협의체 9역할 정의 (ceo, pm, architect, ui, ux, qa, quality, …)
 │  └─ commands/        # 슬래시 커맨드 (init-project, start-project, run-cycle, …)
