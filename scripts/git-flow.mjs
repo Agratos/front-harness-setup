@@ -174,8 +174,10 @@ function cmdStartStep(nn, slug) {
 function evaluateDoneGate(extraArgs) {
 	const gatePath = path.join(repoRoot, 'scripts', 'done-gate.mjs');
 	if (existsSync(gatePath)) {
-		const r = gitSafeNode([gatePath]);
-		if (r.code === 0) return { passed: true, reason: 'done-gate.mjs exit 0' };
+		// 투표 오버라이드 플래그를 done-gate 로 전달 (주관 임계만 우회, 결정적 게이트는 유지).
+		const passThrough = extraArgs.includes('--vote-override') ? ['--vote-override'] : [];
+		const r = gitSafeNode([gatePath, ...passThrough]);
+		if (r.code === 0) return { passed: true, reason: `done-gate.mjs exit 0${passThrough.length ? ' (vote-override)' : ''}` };
 		return { passed: false, reason: `done-gate.mjs exit ${r.code}` };
 	}
 	// 폴백: 명시적 승인 필요
@@ -237,7 +239,7 @@ function usage() {
 			'사용법:',
 			'  node scripts/git-flow.mjs seed-main',
 			'  node scripts/git-flow.mjs start-step <nn> <slug>',
-			'  node scripts/git-flow.mjs merge-step <nn> <slug> [--gate-ok]',
+			'  node scripts/git-flow.mjs merge-step <nn> <slug> [--gate-ok] [--vote-override]',
 			'',
 			'skipGitFlow=true(=useGit=false) 면 모든 명령은 no-op 입니다.',
 		].join('\n'),

@@ -23,6 +23,8 @@ node scripts/git-flow.mjs seed-main   # useGit=false 면 자동 no-op
 # 3) 사이클 완주 — 페이즈마다 드라이버를 재호출 (한 번 호출 = 한 페이즈 진행)
 node scripts/loop.mjs                 # decompose→design→implement→verify→evaluate→debate→merge
 #   status=done 이 될 때까지 반복 호출 (턴 경계/크래시를 넘어 재개됨)
+#   debate 가 rework 판정이면 implement 로 되돌아가며 reworkCount++; 5회 초과 시 vote 페이즈로 분기
+#   (vote 후 merge 는 주관 임계만 우회하고 결정적 게이트는 유지 — 사양서 확정 2·3)
 
 # 4) 평가 — dev 서버 기동 + Playwright 실사용 + 루브릭 채점 + teardown
 node scripts/eval-playwright.mjs      # harness/evaluations/<id>.{md,json}

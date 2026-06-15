@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PHASE_ORDER } from './loop.mjs';
+import { computeTransition, MAX_REWORK, PHASE_ORDER } from './loop.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -115,6 +115,78 @@ try {
 } finally {
 	try {
 		rmSync(tmpDir, { recursive: true, force: true });
+	} catch {
+		// 정리 실패는 결과에 영향 없음
+	}
+}
+
+// ── 시나리오 B: 재작업(rework) 카운트 + 5회 초과 시 vote 분기 (사양서 확정 2·3) ──
+console.log('');
+console.log('=== loop selftest B: rework→vote 분기 ===');
+
+// (B-1) computeTransition 순수 함수 단위 검증
+{
+	const t1 = computeTransition({ phase: 'debate', currentStepIdx: 0, stepCount: 1, reworkCount: 0, debateOutcome: 'rework' });
+	check('debate+rework(0<5) → implement, rework=1', t1.nextPhase === 'implement' && t1.nextReworkCount === 1);
+	const t2 = computeTransition({ phase: 'debate', currentStepIdx: 0, stepCount: 1, reworkCount: MAX_REWORK, debateOutcome: 'rework' });
+	check('debate+rework(5>=5) → vote, rework 유지', t2.nextPhase === 'vote' && t2.nextReworkCount === MAX_REWORK);
+	const t3 = computeTransition({ phase: 'debate', currentStepIdx: 0, stepCount: 1, reworkCount: 2, debateOutcome: 'pass' });
+	check('debate+pass → merge', t3.nextPhase === 'merge');
+	const t4 = computeTransition({ phase: 'vote', currentStepIdx: 0, stepCount: 1, reworkCount: MAX_REWORK });
+	check('vote → merge', t4.nextPhase === 'merge');
+	const t5 = computeTransition({ phase: 'merge', currentStepIdx: 0, stepCount: 2, reworkCount: 3, debateOutcome: 'pass' });
+	check('merge → 다음 step decompose, rework 0 초기화', t5.nextPhase === PHASE_ORDER[0] && t5.nextStepIdx === 1 && t5.nextReworkCount === 0);
+}
+
+// (B-2) 통합: env 로 debate=rework 강제 → MAX_REWORK 회 implement 되돌이 후 vote, 그 뒤 merge→done
+const tmpDirB = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-rework-'));
+try {
+	mkdirSync(path.join(tmpDirB, 'harness'), { recursive: true });
+	writeFileSync(
+		path.join(tmpDirB, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	const statePathB = stateFilePath(tmpDirB);
+	const envB = { ...process.env, HARNESS_DEBATE_OUTCOME: 'rework' };
+	const invokeRework = (args = []) => {
+		try {
+			const stdout = execFileSync('node', [loopScript, ...args], { cwd: tmpDirB, encoding: 'utf8', stdio: 'pipe', env: envB });
+			return { code: 0, stdout };
+		} catch (err) {
+			return { code: err.status ?? 1, stdout: (err.stdout || '').toString() };
+		}
+	};
+	const parseExecB = (stdout) => {
+		const m = /executed:\s*([a-z]+)/.exec(stdout);
+		return m ? m[1] : null;
+	};
+
+	const executedB = [];
+	const firstB = invokeRework(['--init', '01-demo']);
+	if (parseExecB(firstB.stdout)) executedB.push(parseExecB(firstB.stdout));
+	let stB = readState(statePathB);
+	let guard = 0;
+	while (stB.status !== 'done' && guard < 60) {
+		const r = invokeRework();
+		const ex = parseExecB(r.stdout);
+		if (ex) executedB.push(ex);
+		stB = readState(statePathB);
+		guard++;
+	}
+
+	check('B: status=done 도달', stB.status === 'done');
+	check('B: vote 페이즈 진입함', executedB.includes('vote'));
+	check('B: vote 정확히 1회만 진입', executedB.filter((p) => p === 'vote').length === 1);
+	const implementCount = executedB.filter((p) => p === 'implement').length;
+	check(`B: implement ${MAX_REWORK + 1}회 이상(최초 1 + 재작업 ${MAX_REWORK})`, implementCount >= MAX_REWORK + 1);
+	check(`B: reworkCount 가 MAX_REWORK(${MAX_REWORK}) 도달`, stB.reworkCount === MAX_REWORK);
+	check('B: vote 후 gateOverride=true', stB.gateOverride === true);
+} catch (err) {
+	failures.push(`B 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpDirB, { recursive: true, force: true });
 	} catch {
 		// 정리 실패는 결과에 영향 없음
 	}
