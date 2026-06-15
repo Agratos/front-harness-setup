@@ -3,7 +3,7 @@
 // - .git 존재 확인, useGit=true 이고 저장소가 없으면 git init (이 스텝이 저장소 생성 책임)
 // - (선택) git 원격 주소·Notion 대시보드 URL 을 받아 **실제 접근 가능한지 확인**한다.
 //     · git: `git ls-remote <url>` 로 인증·존재 확인 → 되면 origin 연결
-//     · notion: URL 에서 page id 추출 → NOTION_TOKEN 으로 페이지 조회(integration 연결 확인)
+//     · notion: URL 에서 page id 추출 → NOTION_TOKEN 으로 페이지 조회(integration 확인) + 대시보드 초기화 페이로드 적재
 //   인터뷰/개발 전에 연동 끊김을 잡아, "한참 작업 후 push/미러 실패" 사고를 막는다.
 // - harness/config.json 에 {useGit, useMcp, mcpServers, skipGitFlow, gitRemote,
 //   notionDashboardPageId, preflight.checks} 기록
@@ -13,6 +13,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import { resetDashboard } from './lib/notion.mjs';
 
 const repoRoot = process.cwd();
 const harnessDir = path.join(repoRoot, 'harness');
@@ -217,7 +219,12 @@ async function main() {
 		console.log(`notion url: ${notionUrl}`);
 		console.log(`  page id: ${notionPageId ?? '(추출 실패)'}`);
 		console.log(`  접근 확인: ${notionCheck.ok ? 'OK ✅' : 'FAIL ❌'} — ${notionCheck.message}`);
-		if (!notionCheck.ok) {
+		if (notionCheck.ok) {
+			// 접근 확인 성공 → 새 프로젝트 시작이므로 대시보드 초기화 페이로드를 적재한다.
+			// 실제 비우기(flush)는 오케스트레이터/MCP 가 outbox 를 처리하며 수행한다.
+			const rd = resetDashboard({ repoRoot, pageId: notionPageId, projectName: path.basename(repoRoot), force: true });
+			if (!rd.skipped) console.log(`  대시보드 초기화 페이로드 적재: ${path.relative(repoRoot, rd.outboxPath)} (flush 시 비워짐)`);
+		} else {
 			console.log('  ⚠️ Notion 페이지에 접근하지 못했습니다. 페이지에 integration 을 연결했는지, NOTION_TOKEN 이 맞는지 확인하세요. (진행은 차단하지 않음)');
 		}
 	} else if (notionUrl && !useMcp) {

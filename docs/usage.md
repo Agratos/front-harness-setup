@@ -39,7 +39,7 @@
 
 | 커맨드           | 감싸는 스크립트                              | 설명                                  |
 | ---------------- | -------------------------------------------- | ------------------------------------- |
-| `/start-project` | `reset`·`init-project`·`loop --init`·`git-flow seed-main` | `--fresh` 정리 → 연동확인 → Q&A·계획·main 시드 |
+| `/start-project` | `init-project`·`loop --init`·`git-flow seed-main` | 연동 확인 + Notion 대시보드 초기화 → Q&A·계획·main 시드 |
 | `/run-cycle`     | `loop.mjs` 재호출 + 협의 위임                | 사이클 완주의 심장                    |
 | `/status`        | `harness/state.json` 조회                    | 진행 상황 표시                        |
 | `/git-flow`      | `git-flow.mjs`                               | 브랜치 라이프사이클                   |
@@ -140,7 +140,7 @@ node scripts/reset-project.mjs --name=my-app          # 미리보기
 node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
 ```
 
-> Claude Code 안에서는 **`/start-project --fresh`** 가 이 스크립트를 **미리보기 → 사용자 승인 → 적용 → Notion 실제 flush** 안전 절차로 감싸 제자리 초기화를 수행합니다. (별도 `/clear-project`·`/init-project` 커맨드는 `/start-project` 로 흡수됐고, 스크립트 `reset-project.mjs`·`init-project.mjs` 는 그대로 재사용됩니다.) 정의: [.claude/commands/start-project.md](../.claude/commands/start-project.md).
+> 이 스크립트는 **`/copy-project` 가 복사 시 `--no-notion` 으로 호출**(빈 껍데기화)하거나, 복사 없이 제자리에서 다시 시작할 때 `yarn reset --apply` 로 직접 실행합니다. **Notion 대시보드 초기화·접속 확인은 `/start-project`(연동 확인 단계)가 새 URL 로 수행**합니다(별도 `/clear-project`·`/init-project` 커맨드는 통합으로 제거됨).
 
 ### 6-1. 다른 경로로 복사하며 시작 (`scripts/copy-project.mjs` / `/copy-project`)
 
