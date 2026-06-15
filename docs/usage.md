@@ -39,8 +39,7 @@
 
 | 커맨드           | 감싸는 스크립트                              | 설명                                  |
 | ---------------- | -------------------------------------------- | ------------------------------------- |
-| `/init-project`     | `init-project.mjs`                              | git/MCP 게이트 (인터뷰보다 먼저 실행) |
-| `/start-project` | `loop.mjs --init` + `git-flow.mjs seed-main` | Q&A → 계획 → 조건부 main 시드         |
+| `/start-project` | `reset`·`init-project`·`loop --init`·`git-flow seed-main` | `--fresh` 정리 → 연동확인 → Q&A·계획·main 시드 |
 | `/run-cycle`     | `loop.mjs` 재호출 + 협의 위임                | 사이클 완주의 심장                    |
 | `/status`        | `harness/state.json` 조회                    | 진행 상황 표시                        |
 | `/git-flow`      | `git-flow.mjs`                               | 브랜치 라이프사이클                   |
@@ -141,7 +140,7 @@ node scripts/reset-project.mjs --name=my-app          # 미리보기
 node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
 ```
 
-> Claude Code 안에서는 슬래시 커맨드 **`/clear-project`** 로 실행하는 것을 권장합니다(`/clear` 는 빌트인 예약어라 `-project` 접미사 사용). 이 커맨드는 **미리보기 → 사용자 승인 → 적용 → Notion 실제 flush** 안전 절차로 위 스크립트를 감쌉니다. 정의: [.claude/commands/clear-project.md](../.claude/commands/clear-project.md).
+> Claude Code 안에서는 **`/start-project --fresh`** 가 이 스크립트를 **미리보기 → 사용자 승인 → 적용 → Notion 실제 flush** 안전 절차로 감싸 제자리 초기화를 수행합니다. (별도 `/clear-project`·`/init-project` 커맨드는 `/start-project` 로 흡수됐고, 스크립트 `reset-project.mjs`·`init-project.mjs` 는 그대로 재사용됩니다.) 정의: [.claude/commands/start-project.md](../.claude/commands/start-project.md).
 
 ### 6-1. 다른 경로로 복사하며 시작 (`scripts/copy-project.mjs` / `/copy-project`)
 

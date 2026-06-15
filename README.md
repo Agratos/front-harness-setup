@@ -44,10 +44,10 @@ node scripts/eval-playwright.mjs      # harness/evaluations/<id>.{md,json}
 ```
 
 Claude Code 안에서는 위 스크립트를 감싼 슬래시 커맨드로도 실행합니다:
-`/copy-project`(다른 경로로 복사+초기화) **또는** (제자리 초기화) `/clear-project` → `/init-project` → `/start-project` → `/run-cycle` → `/evaluate` → `/status`.
+(복사형) `/copy-project` → `/start-project`, 또는 (제자리형) `/start-project --fresh` → `/run-cycle` → `/evaluate` → `/status`.
 
 - **`/copy-project`** — 경로·이름만 받아 이 하네스를 `<경로>/<이름>` 으로 복사하고 곧바로 초기화합니다(`.env` 토큰·`.git`·node_modules 제외 복사). 새로 시작할 때 권장.
-- **`/clear-project`** — 이미 복사해 둔 저장소를 **제자리에서** 초기화(미리보기→승인→적용 안전 절차).
+- **`/start-project`** — 프로젝트 시작 전체: `--fresh`(제자리 정리) → git/Notion **연동 확인** → Q&A·계획 시드·main 시드. (이전 `clear-project`·`init-project` 를 단계로 흡수)
 
 ### 통합 데모로 한 번에 흐름 보기
 
