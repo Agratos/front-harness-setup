@@ -35,7 +35,7 @@ Claude Code 안에서는 위 스크립트를 감싼 슬래시 커맨드로도 �
 
 ### 통합 데모로 한 번에 흐름 보기
 
-전체 골격(preflight → git-flow → loop → 협의 로그 → 평가 → 최종 보고)을 **실제 저장소를 오염시키지 않고** 한 번에 시연합니다. git-flow 와 loop 완주는 임시 격리 환경에서 돌고, 실제 repo 에는 결정 1건·보고서·요약 로그만 남깁니다.
+전체 골격(preflight → git-flow → loop → 협의 로그 → 평가 → 최종 보고)을 **실제 저장소를 오염시키지 않고** 한 번에 시연합니다. git-flow·loop·협의 결정(logDecision) 시연은 모두 임시 격리 환경에서 돌고, 실제 repo 에는 보고서(`harness/report.md`)·요약 로그(`harness/cycles/`)만 남깁니다.
 
 ```bash
 node scripts/demo.mjs                 # → 'DEMO: PASS', harness/report.md 채워짐
