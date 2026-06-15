@@ -64,7 +64,8 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **재작업 카운트(`reworkCount`)·5회 초과 시 `vote` 분기·투표 후 진행(gateOverride)** | **코드 강제** — `scripts/loop.mjs`(`computeTransition`) + `done-gate.mjs --vote-override` |
 | 브랜치 보호(직푸시 차단), merge 게이트                                  | **코드 강제** — `scripts/git-flow.mjs`                                                          |
 | dev 서버 teardown·포트 해제                                             | **코드 강제** — `scripts/eval-playwright.mjs` / `teardown.mjs`                                  |
-| **K=3 동시 호출 상한, 3 라운드 반박, `주장:이유` 형식, PM 경유 릴레이, 투표의 *내용*(누가 무엇에 표를 던지나·다수결 판단·캐스팅보트)** | **오케스트레이터 수동 준수** — 코드 차단 없음. 오케스트레이터(LLM)가 본 문서를 따라 운영합니다. |
+| Notion 미러 **적재**(대시보드 진행상황·결정 결론)                       | **코드 — 자동 호출** `loop.mjs`→`upsertDashboard`, `log.mjs`→`mirrorDecisionComment`(useMcp 게이트). 단 라이브 **flush** 는 오케스트레이터/MCP |
+| **에이전트 subset 선정**(누구를 투입할지), K=3 동시 호출 상한, 3 라운드 반박, `주장:이유` 형식, PM 경유 릴레이, 투표의 *내용*(누가 무엇에 표를 던지나·다수결 판단·캐스팅보트) | **오케스트레이터 수동 준수** — 코드 차단 없음. CEO 가 `docs/agent-roster.md` 기본값을 출발점으로 판단(힌트, 강제 아님). |
 
 > 즉 **토론·중재의 절차 규칙(K=3·3R·형식)과 투표의 내용은 코드로 강제되지 않습니다.** 오케스트레이터가 이 규약을 따르도록 작성돼 있으며, 결과물(decisions 파일)의 형식·내용으로 사후 점검합니다.
 > 반면 **"몇 번 재작업했는가 → 언제 투표로 넘어가는가 → 투표 후 어떻게 진행하는가"는 `loop.mjs` 가 코드로 강제**합니다(확정 2·3). 결정적 게이트와 함께 자동 차단/분기되는 부분입니다. 검증: `node scripts/loop.selftest.mjs`(시나리오 B).
@@ -76,6 +77,8 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 예시: `harness/decisions/example-0001.md`. 상세는 [docs/usage.md](docs/usage.md) §3.
 
 ### 페이즈별 투입 예시
+
+> 기본 subset(힌트)의 정본은 [`docs/agent-roster.md`](docs/agent-roster.md) 입니다. CEO 가 이를 출발점으로 상황에 맞게 가감합니다(강제 아님).
 
 | 페이즈        | 투입 에이전트(예시)                    | 근거                                  |
 | ------------- | -------------------------------------- | ------------------------------------- |

@@ -24,6 +24,7 @@ import { pathToFileURL } from 'node:url';
 
 import { advancePhase, defaultState, markCommitted, needsRerun, readState, stateFilePath, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation } from './done-gate.mjs';
+import { upsertDashboard } from './lib/notion.mjs';
 
 // step 당 페이즈 순서. merge 다음은 (다음 step 의) decompose 로 래핑한다.
 export const PHASE_ORDER = ['decompose', 'design', 'implement', 'verify', 'evaluate', 'debate', 'merge'];
@@ -296,7 +297,30 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	}
 	writeState(statePath, advanced);
 
+	// Notion 자동 미러: useMcp 면 대시보드 진행상황 페이로드를 outbox 에 적재(아니면 no-op).
+	// 실패는 루프 진행에 영향 없음(미러는 부수효과). 실제 flush 는 오케스트레이터/MCP 가 수행.
+	try {
+		mirrorDashboardToNotion(repoRoot, advanced);
+	} catch {
+		/* notion 미러 실패 무시 */
+	}
+
 	return { state: advanced, executedPhase: phase, rerun, note, done };
+}
+
+/** 현재 상태를 Notion 대시보드 갱신 페이로드로 변환해 적재(upsertDashboard, useMcp 게이트). */
+function mirrorDashboardToNotion(repoRoot, state) {
+	const steps = (state.planSteps ?? []).map((label, idx) => ({
+		label,
+		status:
+			state.status === 'done' || idx < (state.currentStepIdx ?? 0)
+				? 'done'
+				: idx === (state.currentStepIdx ?? 0)
+					? 'running'
+					: 'pending',
+		score: state.scores?.[`step-${idx}`]?.score ?? null,
+	}));
+	upsertDashboard(steps, state.scores ?? {}, { repoRoot });
 }
 
 /** cycles 로그 엔트리 구성 (결정적 — Date 대신 phaseSeq/checkpointToken 사용) */

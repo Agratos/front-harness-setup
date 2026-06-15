@@ -115,7 +115,7 @@ logDecision(repoRoot, {
 - **불만 = 실패한 체크리스트 항목**. major 불만이 1건이라도 있으면 done-gate FAIL.
 - **TEARDOWN(Windows critical)**: 항상 `finally` 에서 `taskkill /F /T /PID` 로 dev 서버 프로세스 트리를 종료하고 포트 해제를 검증 → orphan 미잔존.
 - **폴백**: Playwright 미설치/브라우저 실패 시 정적 폴백(static-fallback)으로 전환하되 teardown 은 동일 수행, exit 0.
-- **Notion 미러**: `harness/config.json` 의 `useMcp` 로 게이트. `false` 면 no-op, `true` 면 `harness/notion-outbox/` 에 페이로드 적재. 상세: [notion-dashboard.md](notion-dashboard.md).
+- **Notion 미러(자동)**: `config.useMcp=true` 면 개발 중 자동 적재됩니다 — `loop.mjs` 가 페이즈마다 대시보드 진행상황(`upsertDashboard`)을, `logDecision` 이 결정 결론(`mirrorDecisionComment`)을 `harness/notion-outbox/` 에 쌓습니다. `false` 면 모두 no-op. 적재된 페이로드의 실제 Notion 반영(flush)은 오케스트레이터/MCP 가 수행합니다. 상세: [notion-dashboard.md](notion-dashboard.md).
 
 ---
 

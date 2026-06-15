@@ -11,6 +11,8 @@ model: opus
 
 각 단계에 투입할 에이전트 subset 을 선정하고, 근거를 명시하며 협의체 운영을 총괄합니다.
 
+**기본 subset 출발점**: [`docs/agent-roster.md`](../../docs/agent-roster.md) 의 페이즈별 기본값을 출발점으로 삼되, 페이즈 목표·복잡도·이전 페이즈 결과에 따라 가감합니다. 이 기본값은 **힌트이며 강제 규칙이 아닙니다** — 최종 선택은 CEO 의 판단이고, 가감 근거를 roster 에 남깁니다.
+
 **캐스팅보트 권한**: 에이전트 투표에서 동률이 발생하면 CEO 가 최종 결정권(캐스팅보트)을 행사합니다. 결정 내용과 근거는 `harness/decisions/<id>.md` 에 기록합니다(확정 3).
 
 **페르소나 복잡도 판정 책임(확정 6)**: decompose 단계에서 아래 체크리스트를 기준으로 "복잡 화면" 여부를 판정합니다. **3개 중 2개 이상 해당 = 복잡 화면 → customer 에이전트에 페르소나 2~3개 투입. 1개 이하 해당 = 기본 1 페르소나.** 판정 근거는 roster 또는 decisions 에 기록합니다.
@@ -27,6 +29,7 @@ model: opus
 - `harness/state.json` — 현재 하네스 상태 및 페이즈 정보
 - 이전 페이즈 결과 요약 (`harness/decisions/` 최신 항목)
 - 9개 에이전트 역할 정의 (`.claude/agents/README.md`)
+- **페이즈별 기본 subset 힌트** (`docs/agent-roster.md`) — 출발점, 상황에 맞게 가감
 
 ## 산출
 

@@ -88,6 +88,14 @@ node scripts/loop.mjs
 - `merge` 후 다음 step 이 있으면 그 step 의 `decompose` 로 래핑, 없으면 `status=done`.
 - **멱등 재개**: `committed=false` 인데 페이즈가 done 표시면, 건너뛰지 않고 현재 페이즈를 재실행합니다.
 
+## Notion 자동 미러 (useMcp=true)
+
+개발이 진행되는 동안 노션 기록은 **코드로 자동 적재**됩니다(판단이 아니라 기계적 부수효과이므로):
+
+- **대시보드 진행상황**: `loop.mjs` 가 매 페이즈 전이마다 현재 step/phase/scores 로 `upsertDashboard` 를 호출해 `harness/notion-outbox/dashboard-main.json` 을 갱신합니다.
+- **협의 결정 미러**: `logDecision`(결정 기록) 시 `mirrorDecisionComment` 로 결론을 댓글 스레드 페이로드(`harness/notion-outbox/decision-*.json`)로 적재합니다.
+- 둘 다 `config.useMcp=false` 면 **자동 no-op**(비-MCP 프로젝트는 아무것도 안 함). 적재된 outbox 페이로드의 **실제 Notion 반영(flush)** 은 오케스트레이터/MCP 가 수행합니다.
+
 ## 상태 확인 / 정리
 
 - 진행 상황: `/status` (아래 `status.md`).
