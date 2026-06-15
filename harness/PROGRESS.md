@@ -7,6 +7,13 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 부트스트랩 커맨드 통합 (4개 → 2개)
+- **통합**: `/clear-project`·`/init-project` 커맨드를 `/start-project` 로 흡수. `/start-project` 가 0)`--fresh` 제자리 정리 → 1) git/Notion 연동 확인 → 2) Q&A → 3) 계획 시드 → 4) main 시드를 순서대로 오케스트레이션. `copy-project` 는 유지.
+- **결과**: `.claude/commands/` = copy-project / start-project / run-cycle / status / git-flow / evaluate (6개). 부트스트랩 커맨드는 copy-project·start-project 2개.
+- **스크립트 보존**: `reset-project.mjs`·`init-project.mjs` 는 삭제하지 않고 start-project 가 호출(yarn reset/copy 로도 직접 실행 가능).
+- **문서 동기**: start-project.md 재작성, copy-project.md 참조, docs/commands.md 표·흐름, README 커맨드 흐름·인덱스, AGENTS 커맨드 목록, usage 명령어 표·§6.
+- **마지막 갱신**: 2026-06-15 (기록자: 커맨드 통합 세션)
+
 ### 🟢 완료 — preflight → init-project rename + commands 인덱스
 - **rename**: `scripts/preflight.mjs`→`init-project.mjs`, `*.selftest.mjs` 동일, `.claude/commands/preflight.md`→`init-project.md`. 커맨드는 `/init-project`(`/init` 은 빌트인 예약). 스크립트 경로·커맨드명 참조 전부 갱신. **단 `config.json` 의 `preflight` 키는 데이터 호환 위해 유지**(demo·init-project.mjs 가 읽고 씀).
 - **commands 정리**: `docs/commands.md` 인덱스 신설 — 8개 커맨드를 부트스트랩/사이클로 묶고 실행 흐름·파괴성 표기. (commands/ 안에 두면 `.md` 가 슬래시 커맨드로 등록돼 버려 docs/ 에 배치)
