@@ -21,9 +21,13 @@ node scripts/reset-project.mjs --name=my-app --apply  # 실제 적용
 #   초기화 = harness/ 런타임 로그·평가(가짜 통과 방지)·결정 정리, .env 토큰 제거, 이름 치환,
 #   Notion 사용 시 dashboard-reset 페이로드 적재(다음 flush 때 대시보드 초기화).
 
-# 1) 프리플라이트 — git/MCP 사용 여부 게이트 + harness/config.json 기록
+# 1) 프리플라이트 — git/MCP 게이트 + (선택) 원격·Notion 접근 확인 + harness/config.json 기록
 node scripts/preflight.mjs            # 기본 useGit=true, useMcp=false
-#   비대화형: node scripts/preflight.mjs --use-git=true --use-mcp=false
+#   원격·Notion 연동까지 미리 확인(권장): 끊김을 개발 전에 잡음
+node scripts/preflight.mjs --use-mcp=true \
+  --git-remote=git@github.com:me/my-app.git \
+  --notion-url=https://www.notion.so/.../Dashboard-<32hex>
+#   (git ls-remote 로 접근 확인 후 origin 연결, Notion page 조회로 integration 연결 확인)
 
 # 2) 프로젝트 시작 — 계획(planSteps) 시드 + (git 사용 시) main 시드
 node scripts/loop.mjs --init "01-login,02-dashboard"
@@ -64,6 +68,7 @@ node scripts/eval.selftest.mjs        # 평가/teardown/루브릭
 node scripts/log.selftest.mjs         # 로깅 헬퍼
 node scripts/reset-project.selftest.mjs  # 제자리 초기화(멱등·Notion 리셋)
 node scripts/copy-project.selftest.mjs   # 복사 제외 필터·대상 검증
+node scripts/preflight.selftest.mjs      # Notion page id 추출
 ```
 
 ## 구조 개요

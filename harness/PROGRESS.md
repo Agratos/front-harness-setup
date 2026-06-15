@@ -7,6 +7,15 @@
 
 ## 현재 상태
 
+### 🟢 완료 — preflight 에 git 원격·Notion 접근 확인 추가
+- **추가**: `preflight.mjs` 가 `--git-remote=<url>` → `git ls-remote` 로 접근·인증 확인 후 origin 연결, `--notion-url=<url>` → page id 추출 + `NOTION_TOKEN` 으로 페이지 조회(integration 연결 확인). 결과를 `config.json`(`gitRemote`·`notionDashboardPageId`·`preflight.checks`)에 기록. 실패는 경고만(자율 유지).
+- **목적**: 인터뷰/개발 **전에** 연동 끊김을 잡아 "한참 작업 후 push·미러 실패" 사고 방지.
+- **부수 수정**: `--no-git`/`--no-mcp` 별칭이 실제로 동작하도록 parseFlag 별칭 지원(문서엔 있었으나 코드 미인식이던 버그).
+- **검증**: `preflight.selftest.mjs`(page id 추출 10 체크) + 임시 cwd 스모크(새 config 스키마 확인) + `--no-git` 동작 확인. CI self-test 10종 편입.
+- **문서 동기**: `preflight.md`(동작·인자·대화형 절차), README 빠른시작·자가검증 목록.
+- **다음(미완)**: `/start-project` 에서 저장된 `notionDashboardPageId` 로 대시보드 실제 생성·초기화(B-②) 연결.
+- **마지막 갱신**: 2026-06-15 (기록자: preflight 연동확인 세션)
+
 ### 🟢 완료 — 복사+초기화 커맨드 `/copy-project`
 - **추가**: `scripts/copy-project.mjs` + `.claude/commands/copy-project.md`. 이 하네스를 `<경로>/<이름>` 으로 복사하고 복사본에서 `reset-project --apply` 자동 실행(복사→초기화 한 번에).
   - 제외 복사: node_modules·.git·dist·.yarn 캐시·**.env(토큰)**·*.tsbuildinfo·.omc.
