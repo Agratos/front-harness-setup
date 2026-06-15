@@ -8,9 +8,9 @@
 
 ## 1. 동작 모델 — outbox(아웃박스) 패턴
 
-- 어댑터는 **라이브 Notion API 를 직접 호출하지 않습니다.**
-- 대신 페이로드를 빌드해 **`harness/notion-outbox/<id>.json`** 에 적재합니다.
-- 실제 전송(생성/갱신)은 **오케스트레이터/MCP 레이어가 outbox 를 flush** 하며 수행합니다.
+- 어댑터(`notion.mjs`)는 **라이브 Notion API 를 직접 호출하지 않습니다.**
+- 대신 페이로드를 빌드해 **`harness/notion-outbox/<id>.json`** 에 적재합니다(결정론적·오프라인 안전).
+- 실제 전송(생성/갱신)은 **`scripts/lib/notion-api.mjs`(Notion REST)가 flush** 합니다 — `loop`·`init-project` 가 적재 직후 `scripts/notion-flush.mjs` 를 best-effort 로 자동 실행(useMcp+`NOTION_TOKEN` 게이트). MCP 세션에서 수동 flush 도 가능합니다.
 
 이유:
 

@@ -21,7 +21,7 @@ node scripts/init-project.mjs --use-mcp=true \
 - **Notion**: URL 에서 page id 추출 → `NOTION_TOKEN` 으로 페이지 조회(integration 연결 확인) → **대시보드 초기화 페이로드(`dashboard-reset`)를 적재**합니다. 새 프로젝트이므로 이전 내용을 비웁니다.
 - 결과를 ✅/❌ 로 보여주고, 실패는 차단하지 않고 경고만(자율 유지). 대화형에서는 `AskUserQuestion` 으로 주소를 받습니다.
 
-> **Notion 실제 비우기(flush)**: 적재된 `harness/notion-outbox/dashboard-reset.json` 을 오케스트레이터가 MCP 로 flush 해 대시보드(계획 DB·요약·결정 미러)를 비웁니다. MCP 미연동/비대화형이면 outbox 페이로드만 남기고 다음 flush 로 미룹니다.
+> **Notion 실제 비우기(flush)**: `init-project.mjs` 가 적재 직후 `scripts/notion-flush.mjs`(Notion REST)로 **대시보드를 실제로 비웁니다**(자동). `NOTION_TOKEN`/네트워크가 없으면 outbox 페이로드만 남기고 다음 flush(예: `/run-cycle`)에서 재시도합니다.
 
 ### 2) deep-interview 식 Q&A (요구사항 결정화)
 
@@ -53,7 +53,7 @@ node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-
 ```bash
 # 1) 연동 확인 + Notion 초기화 (git/Notion 주소 입력)
 node scripts/init-project.mjs --use-mcp=true --git-remote=<url> --notion-url=<url>
-#    → Notion dashboard-reset 적재 → 오케스트레이터가 MCP flush 로 대시보드 비움
+#    → Notion dashboard-reset 적재 + notion-flush 로 대시보드 실제 비움(자동)
 # 2) (대화형) Q&A → planSteps 확정
 # 3) 계획 시드
 node scripts/loop.mjs --init "01-login,02-dashboard"

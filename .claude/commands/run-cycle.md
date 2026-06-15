@@ -94,7 +94,7 @@ node scripts/loop.mjs
 
 - **대시보드 진행상황**: `loop.mjs` 가 매 페이즈 전이마다 현재 step/phase/scores 로 `upsertDashboard` 를 호출해 `harness/notion-outbox/dashboard-main.json` 을 갱신합니다.
 - **협의 결정 미러**: `logDecision`(결정 기록) 시 `mirrorDecisionComment` 로 결론을 댓글 스레드 페이로드(`harness/notion-outbox/decision-*.json`)로 적재합니다.
-- 둘 다 `config.useMcp=false` 면 **자동 no-op**(비-MCP 프로젝트는 아무것도 안 함). 적재된 outbox 페이로드의 **실제 Notion 반영(flush)** 은 오케스트레이터/MCP 가 수행합니다.
+- 둘 다 `config.useMcp=false` 면 **자동 no-op**. `useMcp=true` 면 `loop.mjs` 가 적재 직후 **`scripts/notion-flush.mjs` 를 best-effort 로 실행해 실제 Notion 에 자동 반영**합니다(REST API, `NOTION_TOKEN` 필요). 실패·오프라인이면 outbox 에 남아 다음 페이즈에 재시도합니다.
 
 ## 상태 확인 / 정리
 

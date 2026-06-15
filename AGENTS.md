@@ -64,7 +64,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **재작업 카운트(`reworkCount`)·5회 초과 시 `vote` 분기·투표 후 진행(gateOverride)** | **코드 강제** — `scripts/loop.mjs`(`computeTransition`) + `done-gate.mjs --vote-override` |
 | 브랜치 보호(직푸시 차단), merge 게이트                                  | **코드 강제** — `scripts/git-flow.mjs`                                                          |
 | dev 서버 teardown·포트 해제                                             | **코드 강제** — `scripts/eval-playwright.mjs` / `teardown.mjs`                                  |
-| Notion 미러 **적재**(대시보드 진행상황·결정 결론)                       | **코드 — 자동 호출** `loop.mjs`→`upsertDashboard`, `log.mjs`→`mirrorDecisionComment`(useMcp 게이트). 단 라이브 **flush** 는 오케스트레이터/MCP |
+| Notion 미러 **적재 + 라이브 flush**(대시보드 진행상황·결정 결론)        | **코드** — 적재: `loop.mjs`→`upsertDashboard`, `log.mjs`→`mirrorDecisionComment`; flush: `loop`·`init-project` 가 `notion-flush.mjs`(Notion REST) 자동 실행(useMcp+`NOTION_TOKEN` 게이트, best-effort) |
 | **에이전트 subset 선정**(누구를 투입할지), K=3 동시 호출 상한, 3 라운드 반박, `주장:이유` 형식, PM 경유 릴레이, 투표의 *내용*(누가 무엇에 표를 던지나·다수결 판단·캐스팅보트) | **오케스트레이터 수동 준수** — 코드 차단 없음. CEO 가 `docs/agent-roster.md` 기본값을 출발점으로 판단(힌트, 강제 아님). |
 
 > 즉 **토론·중재의 절차 규칙(K=3·3R·형식)과 투표의 내용은 코드로 강제되지 않습니다.** 오케스트레이터가 이 규약을 따르도록 작성돼 있으며, 결과물(decisions 파일)의 형식·내용으로 사후 점검합니다.
@@ -93,7 +93,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 
 | 경로                | 무엇이 있나                                                                                                                                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/`          | 하니스 드라이버·게이트·평가·로깅 (Node `.mjs`). `loop.mjs`(드라이버), `git-flow.mjs`, `done-gate.mjs`, `eval-playwright.mjs`, `check-arch.js`, `init-project.mjs`, `demo.mjs`, `copy-project.mjs`(다른 경로로 복사+초기화), `reset-project.mjs`(제자리 초기화), `*.selftest.mjs`                                      |
+| `scripts/`          | 하니스 드라이버·게이트·평가·로깅 (Node `.mjs`). `loop.mjs`(드라이버), `git-flow.mjs`, `done-gate.mjs`, `eval-playwright.mjs`, `check-arch.js`, `init-project.mjs`, `demo.mjs`, `copy-project.mjs`(다른 경로로 복사+초기화), `reset-project.mjs`(제자리 초기화), `notion-flush.mjs`(outbox→Notion REST flush), `*.selftest.mjs`. `lib/`: `notion.mjs`(적재)·`notion-api.mjs`(flush) |
 | `scripts/lib/`      | 공용 모듈: `state.mjs`(상태 매니페스트), `log.mjs`(logError/logCycle/logDecision), `rubric.mjs`(채점), `teardown.mjs`(프로세스 정리), `notion.mjs`(미러 어댑터)                                                                   |
 | `.claude/agents/`   | 협의체 9역할 정의 + `README.md` 인덱스                                                                                                                                                                                            |
 | `.claude/commands/` | 슬래시 커맨드: `copy-project`(다른 경로로 복사+초기화), `start-project`(제자리 정리·연동확인·Q&A·계획·시드 통합), `run-cycle`, `status`, `git-flow`, `evaluate`                                                                                                                                        |

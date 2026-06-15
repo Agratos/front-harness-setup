@@ -7,6 +7,15 @@
 
 ## 현재 상태
 
+### 🟢 완료 — Notion 라이브 flush 자동화 (outbox → 실제 Notion REST)
+- **신규**: `scripts/lib/notion-api.mjs`(Notion REST 래퍼: clearPageChildren·appendBlocks·addComment + `flushOutbox`) + `scripts/notion-flush.mjs`(CLI, `yarn notion:flush`).
+  - `dashboard.reset` → 페이지 자식 블록 비우기 + 초기화 콜아웃 / `dashboard.upsert` → 진행 한 줄 append / `decision.comment.mirror` → 페이지 댓글.
+- **자동 연결**: `loop.mjs` 가 매 페이즈 적재 후 `notion-flush` best-effort spawn(useMcp 게이트), `init-project.mjs` 가 대시보드 초기화 후 `await flushOutbox`. 토큰/네트워크 없으면 skip, 실패분은 outbox 에 남아 재시도.
+- **이전 한계 해소**: "적재만 하고 실제 Notion 반영은 수동" → 이제 `useMcp+NOTION_TOKEN` 이면 **개발 중 자동 라이브 반영**.
+- **검증**: `notion-api.selftest`(빌더·게이트, 네트워크 미사용) PASS, lint green, selftest 11종 PASS. (실제 Notion 쓰기 스모크는 사용자 페이지 영향이라 미실행 — 승인 후 진행)
+- **문서 동기**: run-cycle·usage·AGENTS(강제 모델)·notion-dashboard·start-project·README, CI self-test 11종, package.json `notion:flush`.
+- **마지막 갱신**: 2026-06-15 (기록자: Notion 라이브 flush 세션)
+
 ### 🟢 완료 — Notion 자동 기록 배선(C) + agent subset 기본값 힌트(D)
 - **C(코드)**: `loop.mjs` 가 매 페이즈 전이마다 `upsertDashboard`(대시보드 진행상황), `log.mjs logDecision` 이 `mirrorDecisionComment`(결정 결론)를 `harness/notion-outbox/` 에 자동 적재. 둘 다 `useMcp=false` 면 no-op. 라이브 flush 는 오케스트레이터/MCP. (이전엔 함수만 있고 호출 0건이라 진행 기록이 안 됐음)
 - **D(md+설정)**: agent subset 선정은 코드 강제하지 않음(맥락 판단). 대신 `docs/agent-roster.md`(페이즈별 기본 subset 힌트) 신설 + `ceo.md` 가 출발점으로 참조. 강제 아닌 힌트.
