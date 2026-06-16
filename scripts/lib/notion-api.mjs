@@ -91,20 +91,29 @@ async function notionFetch(method, url, token, body, timeoutMs = 15000) {
 	}
 }
 
-/** 페이지의 자식 블록을 모두 archive(비우기). 페이지네이션 처리. */
+/**
+ * 페이지의 자식 블록을 모두 archive(비우기).
+ * GET→DELETE 를 남은 블록이 없을 때까지 반복(최대 6 pass)한다 — 일시 DELETE 실패·
+ * 페이지네이션(>100)·rate limit 으로 한 번에 다 못 지우는 경우를 견고하게 처리.
+ * 한 pass 에서 하나도 못 지우면(특수 블록 등) 무한 루프 방지를 위해 중단한다.
+ */
 async function clearPageChildren(pageId, token) {
-	let cursor = null;
 	let archived = 0;
-	do {
-		const url = `${API}/blocks/${pageId}/children?page_size=100` + (cursor ? `&start_cursor=${cursor}` : '');
-		const r = await notionFetch('GET', url, token);
+	for (let pass = 0; pass < 6; pass++) {
+		const r = await notionFetch('GET', `${API}/blocks/${pageId}/children?page_size=100`, token);
 		if (!r.ok) return { ok: false, status: r.status, archived };
-		for (const block of r.json?.results ?? []) {
+		const results = r.json?.results ?? [];
+		if (results.length === 0) return { ok: true, archived };
+		let progressed = false;
+		for (const block of results) {
 			const d = await notionFetch('DELETE', `${API}/blocks/${block.id}`, token);
-			if (d.ok) archived++;
+			if (d.ok) {
+				archived++;
+				progressed = true;
+			}
 		}
-		cursor = r.json?.has_more ? r.json.next_cursor : null;
-	} while (cursor);
+		if (!progressed) return { ok: true, archived, note: '일부 블록을 비우지 못함(특수 블록 가능)' };
+	}
 	return { ok: true, archived };
 }
 
