@@ -59,12 +59,15 @@ node scripts/loop.mjs --init "01-login,02-dashboard,03-settings"
 ```
 
 - `--init` 은 상태가 `init`/없을 때만 시드(기존 진행 상태는 덮어쓰지 않음).
+- ⚠️ `--init` 은 시드와 동시에 **첫 페이즈(decompose)를 자동 전진**시킨다(`step/01-…` 브랜치 생성 + `design` 진입). 그래서 `/run-cycle` 첫 진입 시 step 1 은 이미 `design` 이다 — **decompose 산출물(step 분해 기록 `decisions/<id>.md`)은 첫 `/run-cycle` 에서 보강**하라.
 
 ### 4) 조건부 main 시드 (git 사용 시에만)
 
 ```bash
 node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-op. useGit=false 면 자동 우회.
 ```
+
+> 🔧 **default 브랜치 보장**: `seed-main` 은 원격이 연결돼 있으면 **`main` 을 먼저 push** 한다 — 빈 레포에 **step 브랜치가 main 보다 먼저 push 되면 GitHub 이 그 step 을 default 브랜치로 잡는** 문제(실제 테스트에서 `step/01-…` 가 default 가 됨)를 막기 위함. 이미 default 가 잘못 잡혔으면 `gh repo edit <owner>/<repo> --default-branch main`(또는 `gh api -X PATCH repos/<owner>/<repo> -f default_branch=main`)로 교정한다.
 
 ## 실행 요약
 

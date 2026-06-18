@@ -140,6 +140,9 @@ function cmdSeedMain() {
 	}
 	if (mainHasCommits()) {
 		log('seed skipped (main already seeded)');
+		// 빈 원격이면 main 을 먼저 push 해 GitHub default 브랜치가 main 이 되게 한다.
+		// (step 브랜치가 main 보다 먼저 push 되면 그게 default 로 잡힘 — 실제 테스트에서 발생.)
+		pushIfRemote('main');
 		return 0;
 	}
 	// main 이 unborn 이거나 없음 → main 으로 보장 후 시드
@@ -155,6 +158,8 @@ function cmdSeedMain() {
 	const allowEmpty = staged.ok ? ['--allow-empty'] : [];
 	git(['commit', ...allowEmpty, '-m', 'chore: harness 계획 시드']);
 	log(`seed-main 완료: main 초기 시드 커밋 생성 (총 ${mainCommitCount()}개 커밋)`);
+	// 빈 원격이면 main 을 먼저 push 해 default 브랜치를 main 으로 (step 브랜치 우선 push 방지).
+	pushIfRemote('main');
 	return 0;
 }
 

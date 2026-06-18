@@ -61,6 +61,20 @@ function nextEvalId(repoRoot) {
 	return `eval-${String(count + 1).padStart(4, '0')}`;
 }
 
+/**
+ * 기대 앱 이름 = package.json 의 name. reset-project 가 새 프로젝트명으로 치환하므로
+ * (제목/heading 도 함께 치환됨) 평가의 기대값도 하드코딩('harness-setup') 대신 여기서 따른다.
+ * 못 읽으면 'harness-setup' 폴백.
+ */
+function expectedAppName(repoRoot) {
+	try {
+		const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+		return typeof pkg.name === 'string' && pkg.name.trim() ? pkg.name.trim() : 'harness-setup';
+	} catch {
+		return 'harness-setup';
+	}
+}
+
 /** vite dev 서버를 FIXED 포트에 detached child 로 띄운다. */
 function startDevServer(repoRoot, port) {
 	// yarn 4 berry: `yarn dev` → vite --host. 포트는 --port 로 고정.
@@ -118,6 +132,7 @@ async function tryLoadPlaywright() {
  * 서버 준비 여부(serverReady)는 호출자가 주입.
  */
 function staticObservations(repoRoot, { serverReady, gatesGreen }) {
+	const expected = expectedAppName(repoRoot);
 	let title = null;
 	let headingPresent = false;
 	let hasViewportMeta = false;
@@ -126,16 +141,16 @@ function staticObservations(repoRoot, { serverReady, gatesGreen }) {
 		const m = html.match(/<title>([^<]*)<\/title>/i);
 		title = m ? m[1].trim() : null;
 		hasViewportMeta = /name=["']viewport["']/i.test(html);
-		// App.tsx 의 heading 텍스트 확인(정적): <h1>harness-setup</h1>
+		// App.tsx 의 heading 텍스트 확인(정적): <h1><프로젝트명></h1> (= package.json name)
 		headingPresent = existsSync(path.join(repoRoot, 'src', 'app', 'App.tsx'))
-			? /harness-setup/.test(readFileSync(path.join(repoRoot, 'src', 'app', 'App.tsx'), 'utf8'))
+			? readFileSync(path.join(repoRoot, 'src', 'app', 'App.tsx'), 'utf8').includes(expected)
 			: false;
 	} catch {
 		/* 파싱 실패 → 기본값 유지 */
 	}
 	return {
 		bodyNonEmpty: serverReady === true, // 서버가 떴다면 정적으로는 body 채워짐으로 간주
-		titleMatches: title === 'harness-setup',
+		titleMatches: title === expected,
 		headingPresent,
 		consoleErrors: 0,
 		serverReady: serverReady === true,
@@ -154,7 +169,7 @@ function staticObservations(repoRoot, { serverReady, gatesGreen }) {
 }
 
 /** Playwright 로 실측 관찰값 수집 + 스크린샷. 실패 시 null. */
-async function playwrightObservations(pw, port, shotPath, { gatesGreen }) {
+async function playwrightObservations(pw, port, shotPath, { gatesGreen, expectedName }) {
 	let browser;
 	try {
 		browser = await pw.chromium.launch({ headless: true });
@@ -171,7 +186,7 @@ async function playwrightObservations(pw, port, shotPath, { gatesGreen }) {
 		await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 
 		const title = await page.title();
-		const headingPresent = (await page.locator('h1', { hasText: 'harness-setup' }).count()) > 0;
+		const headingPresent = (await page.locator('h1', { hasText: expectedName }).count()) > 0;
 		const bodyText = (await page.locator('body').innerText().catch(() => '')) ?? '';
 		const rootChildren = await page.evaluate(() => {
 			const el = document.getElementById('root');
@@ -222,7 +237,7 @@ async function playwrightObservations(pw, port, shotPath, { gatesGreen }) {
 
 		return {
 			bodyNonEmpty: bodyText.trim().length > 0 || rootChildren > 0,
-			titleMatches: title === 'harness-setup',
+			titleMatches: title === expectedName,
 			headingPresent,
 			consoleErrors: consoleErrors.length,
 			serverReady: true,
@@ -335,7 +350,7 @@ export async function runEvaluation(opts, repoRoot) {
 		// 2) Playwright 실측 시도 → 실패/미설치 시 정적 폴백
 		const pw = serverReady ? await tryLoadPlaywright() : null;
 		if (pw && serverReady) {
-			observations = await playwrightObservations(pw, port, shotPath, { gatesGreen: true });
+			observations = await playwrightObservations(pw, port, shotPath, { gatesGreen: true, expectedName: expectedAppName(repoRoot) });
 			if (observations) {
 				mode = 'playwright';
 			} else {

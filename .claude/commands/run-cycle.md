@@ -96,12 +96,13 @@ node scripts/loop.mjs
 
 1. **시작(seed)**: `git-flow seed-main` — main 에 초기 시드 커밋(없을 때만, 멱등). `/start-project` 가 1회 수행.
 2. **스텝 시작(`decompose` 진입)**: `loop.mjs` 가 `git-flow start-step <nn> <slug>` 를 호출해 **`step/<nn>-<slug>` 브랜치를 생성·체크아웃**한다. 이후 design/implement/verify 는 모두 이 브랜치에서 일어난다.
-3. **검증(`verify`)**: `done-gate --deterministic-only`(typecheck/lint/check-arch/test) — step 브랜치에서.
-4. **병합(`merge`)**: `git-flow merge-step <nn> <slug>` — done-gate 통과 시에만:
+3. **구현 커밋 (오케스트레이터 — ⛔ 필수)**: `loop.mjs`·`git-flow merge-step` 은 작업트리를 **자동 커밋하지 않는다.** merge 는 **커밋된 이력만** `--no-ff` 병합하므로, implement 산출물(코드·테스트·decisions)을 **반드시 step 브랜치에 `git add`/`git commit`** 해야 한다 — 안 하면 merge 가 **빈 병합**이 되어 코드가 main 에 안 들어간다. merge 직전엔 작업트리를 깨끗이 커밋해 둔다(`merge-step` 의 `git checkout main` 이 미커밋 변경으로 막히지 않게). ⚠️ 런타임 `harness/state.json` 은 추적 제외(`.gitignore`)이며 **`git add -A` 로 끌어와 커밋하지 말 것** — done-gate 가 merge 중 latch 를 state.json 에 쓰는데 tracked 면 직후 `checkout main` 이 충돌한다(실제 테스트에서 merge 1회 실패).
+4. **검증(`verify`)**: `done-gate --deterministic-only`(typecheck/lint/check-arch/test) — step 브랜치에서.
+5. **병합(`merge`)**: `git-flow merge-step <nn> <slug>` — done-gate 통과 시에만:
    - 원격이 있으면 **step 브랜치를 push**(테스트 통과분 백업) →
    - `step/<nn>-<slug>` 를 `main` 에 `--no-ff` 병합 →
    - 원격이 있으면 **main 을 push**.
-5. **다음 스텝**: merge 후 다음 step 의 `decompose` 로 전진 → 다시 `start-step` 으로 **새 브랜치**를 딴다.
+6. **다음 스텝**: merge 후 다음 step 의 `decompose` 로 전진 → 다시 `start-step` 으로 **새 브랜치**를 딴다.
 
 > 원격(`origin`)이 없으면 push 는 **경고만 남기고 skip**(자율 유지). 원격은 `/start-project`(`init-project --git-remote=<url>`)로 붙인다. `skipGitFlow=true(useGit=false)` 면 위 git 동작 전체가 no-op.
 > 검증: `node scripts/git-flow.selftest.mjs`(push 시나리오 [4]/[5]) · `node scripts/loop.selftest.mjs`(시나리오 C: 사이클마다 브랜치 생성).

@@ -46,8 +46,8 @@
 | 항목 ID               | 체크리스트 질문                                                | 배점 | 실패 시 심각도 |
 | --------------------- | -------------------------------------------------------------- | ---- | -------------- |
 | `ui.renders`          | 페이지가 흰 화면/에러 없이 렌더되는가 (DOM body 비어있지 않음) | 40   | **major**      |
-| `ui.title`            | 문서 `<title>` 이 기대값(`harness-setup`)과 일치하는가         | 20   | minor          |
-| `ui.heading`          | 핵심 heading(`harness-setup`)이 화면에 보이는가                | 30   | **major**      |
+| `ui.title`            | 문서 `<title>` 이 기대값(`package.json` 의 `name`)과 일치하는가         | 20   | minor          |
+| `ui.heading`          | 핵심 heading(`package.json` 의 `name`)이 화면에 보이는가                | 30   | **major**      |
 | `ui.no-console-error` | 로드 중 콘솔 error 가 0건인가                                  | 10   | minor          |
 
 ### 2.2 UX (차원 가중치 0.20)
