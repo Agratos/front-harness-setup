@@ -221,10 +221,11 @@ async function main() {
 		console.log(`  page id: ${notionPageId ?? '(추출 실패)'}`);
 		console.log(`  접근 확인: ${notionCheck.ok ? 'OK ✅' : 'FAIL ❌'} — ${notionCheck.message}`);
 		if (notionCheck.ok) {
-			// 접근 확인 성공 → 새 프로젝트 시작이므로 대시보드 초기화 페이로드를 적재한다.
-			// 실제 비우기(flush)는 오케스트레이터/MCP 가 outbox 를 처리하며 수행한다.
+			// 접근 확인 성공 → 초기화 페이로드를 적재한다. ⚠️ flush(notion-api) 의 dashboard.reset 은
+			// 비파괴 no-op 이라 실제로 비우지 않는다. 실제 허브 초기화는 /start-project §1b 에서
+			// 오케스트레이터가 커넥터/REST 로 직접 수행한다(docs/notion-hub-layout.md §7).
 			const rd = resetDashboard({ repoRoot, pageId: notionPageId, projectName: path.basename(repoRoot), force: true });
-			if (!rd.skipped) console.log(`  대시보드 초기화 페이로드 적재: ${path.relative(repoRoot, rd.outboxPath)} (flush 시 비워짐)`);
+			if (!rd.skipped) console.log(`  대시보드 초기화 페이로드 적재: ${path.relative(repoRoot, rd.outboxPath)} (※ flush 는 no-op — 실제 비우기는 /start-project §1b 오케스트레이터가 수행)`);
 		} else {
 			console.log('  ⚠️ Notion 페이지에 접근하지 못했습니다. 페이지에 integration 을 연결했는지, NOTION_TOKEN 이 맞는지 확인하세요. (진행은 차단하지 않음)');
 		}
@@ -260,7 +261,7 @@ async function main() {
 	if (useMcp) {
 		try {
 			const fr = await flushOutbox(repoRoot);
-			if (!fr.skipped) console.log(`notion flush: sent=${fr.sent} failed=${fr.failed} (대시보드 초기화 라이브 반영)`);
+			if (!fr.skipped) console.log(`notion flush: sent=${fr.sent} failed=${fr.failed} (※ reset/upsert no-op — 실제 허브 반영은 /start-project §1b 오케스트레이터가 수행)`);
 			else console.log(`notion flush: skip (${fr.reason})`);
 		} catch {
 			/* flush 실패는 best-effort — 무시 */

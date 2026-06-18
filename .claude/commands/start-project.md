@@ -31,10 +31,15 @@ node scripts/init-project.mjs --use-mcp=true \
 ```
 
 - **git**: `git ls-remote` 로 접근·인증 확인 → 성공 시 `origin` 연결.
-- **Notion**: URL 에서 page id 추출 → `NOTION_TOKEN` 으로 페이지 조회(integration 연결 확인) → **대시보드 초기화 페이로드(`dashboard-reset`)를 적재**합니다. 새 프로젝트이므로 이전 내용을 비웁니다.
+- **Notion**: URL 에서 page id 추출 → `NOTION_TOKEN` 으로 페이지 조회로 **접근(integration 연결)만 확인**합니다. ⚠️ `init-project.mjs` 는 **대시보드를 비우지 않습니다** — `dashboard-reset` 페이로드를 적재하고 flush 하지만 `notion-api.mjs` 에서 `dashboard.reset`/`dashboard.upsert` 는 **비파괴 no-op**(실제 삭제·쓰기 안 함, `sent=1` 은 no-op 을 센 값)입니다. **실제 허브 초기화는 아래 1b 단계(오케스트레이터)가 직접 수행**합니다.
 - 결과를 ✅/❌ 로 보여주고, 실패는 차단하지 않고 경고만(자율 유지). 대화형에서는 `AskUserQuestion` 으로 주소를 받습니다.
 
-> **Notion 실제 비우기(flush)**: `init-project.mjs` 가 적재 직후 `scripts/notion-flush.mjs`(Notion REST)로 **대시보드를 실제로 비웁니다**(자동). `NOTION_TOKEN`/네트워크가 없으면 outbox 페이로드만 남기고 다음 flush(예: `/run-cycle`)에서 재시도합니다.
+> ⛔ **1b) Notion 허브 초기화 — 오케스트레이터가 무조건 수행(생략 금지).** init 의 flush 가 no-op 이므로, 접근 확인 뒤 **오케스트레이터가 커넥터(MCP)/REST 로 직접** 허브를 새 프로젝트용으로 초기화한다(`docs/notion-hub-layout.md` §7·§8). 코드·게이트만 돌리고 Notion 을 빈손으로 두지 않는다(실제 사고 사례). `useMcp=false` 또는 토큰/네트워크 부재일 때만 생략(자율 유지).
+>
+> - **비운다**: 제목 `🏢 Harness <…> Inc.` 의 `<>` 안 이름(→ 새 프로젝트명) / 상단 콜아웃(프로젝트 설명·상태줄) / 각 섹션 top-3 불릿 / 모든 DB 행(📋 계획·🔄 Cycles·🚨 이슈·🚀 배포·📝 회의록).
+> - **유지**: 섹션 헤더·구분선 / 인라인 DB 블록(스키마·뷰·컬럼) / 섹션 안내문 / 👥 Team Roster(레퍼런스).
+> - **도구**: 제목·콜아웃·불릿 = `notion-update-page`(또는 REST `PATCH /pages`·`PATCH /blocks/{id}`). DB 행은 **삭제 대신 archive** — 커넥터로는 행 삭제 불가하므로 REST `PATCH /pages/{rowId}` `{ "archived": true }`(행 조회는 `POST /databases/{id}/query`, `Notion-Version: 2022-06-28`) 또는 Notion UI 수동. **인라인 DB 블록 자체는 절대 삭제하지 않는다**(구조 파괴 금지 — 과거 `clearPageChildren` 버그).
+> - 페이지/DB/ds ID 는 박힌 값을 믿지 말고 **허브를 fetch 해 현재 ID** 를 얻어 쓴다.
 
 ### 2) deep-interview 식 Q&A (요구사항 결정화) — **무조건 진행(필수)**
 
@@ -67,7 +72,8 @@ node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-
 # 0) 기존 상태: 기본=이어서(resume). --fresh 면 런상태 초기화(state/eval/decision/cycle-log) 후 새로 — .env·정체성 보존
 # 1) 연동 확인 + Notion 초기화 (git/Notion 주소 입력)
 node scripts/init-project.mjs --use-mcp=true --git-remote=<url> --notion-url=<url>
-#    → Notion dashboard-reset 적재 + notion-flush 로 대시보드 실제 비움(자동)
+#    → init 은 git/Notion 접근 확인만. (Notion 대시보드 비우기는 no-op)
+# 1b) ⛔ Notion 허브 초기화 — 오케스트레이터가 커넥터/REST 로 직접 수행(무조건, §1b)
 # 2) deep-interview Q&A (필수·무조건) → planSteps 확정
 # 3) 계획 시드
 node scripts/loop.mjs --init "01-login,02-dashboard"

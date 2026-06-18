@@ -106,9 +106,18 @@ node scripts/loop.mjs
 > 원격(`origin`)이 없으면 push 는 **경고만 남기고 skip**(자율 유지). 원격은 `/start-project`(`init-project --git-remote=<url>`)로 붙인다. `skipGitFlow=true(useGit=false)` 면 위 git 동작 전체가 no-op.
 > 검증: `node scripts/git-flow.selftest.mjs`(push 시나리오 [4]/[5]) · `node scripts/loop.selftest.mjs`(시나리오 C: 사이클마다 브랜치 생성).
 
-## Notion 허브 갱신 (오케스트레이터·커넥터, 비파괴)
+## Notion 허브 갱신 (오케스트레이터·커넥터, 비파괴) — ⛔ 무조건 수행
 
-라이브 허브(사양: `docs/notion-hub-layout.md`)는 **`/run-cycle` 오케스트레이터가 매 사이클 커넥터(MCP)로 직접** 갱신한다 — 계획·🔄 Cycles·🚨 이슈·🚀 배포 DB에 행을 쓰고, 섹션 상단 **top-3 불릿**(§1.1)과 콜아웃 상태줄을 다시 쓴다. **구조(섹션·인라인 DB·뷰·Team Roster)는 절대 건드리지 않는다.**
+> ⛔ **매 사이클 Notion 허브 갱신은 필수다. 서술로만 두고 건너뛰지 않는다.** (실제 사고: 코드·게이트·평가·머지만 끝내고 Notion 을 빈손으로 둬서, 라이브 허브가 옛 프로젝트 그대로 남음.) `config.useMcp=false` 또는 토큰/네트워크 부재일 때**만** 생략(자율 유지).
+
+라이브 허브(사양: `docs/notion-hub-layout.md`)는 **`/run-cycle` 오케스트레이터가 매 사이클 커넥터(MCP)/REST 로 직접** 갱신한다. **구조(섹션·인라인 DB·뷰·Team Roster)는 절대 건드리지 않는다.** 사이클마다 아래를 수행한다(해당 없으면 그 항목만 생략):
+
+- **첫 사이클(새 프로젝트)**: 📋 계획 DB 에 planSteps 행이 없으면 먼저 생성(한 행 = 한 step). `/start-project` §1b 의 허브 초기화가 안 됐으면 여기서 보강.
+- **decompose 진입**: 🔄 Cycles DB 새 행(`사이클 N — <step>`, 상태 `진행 중`, `계획` relation, `에이전트` multi_select) 생성 → 🔄 진행 상황 **top-3 불릿 재작성** + 콜아웃 상태줄(`사이클 N/M`) 갱신.
+- **evaluate/debate**: 사이클 행 `평가`(done-gate score)·`한 일` 갱신. 이슈가 있으면 🚨 이슈 트래커 행 생성 + 본문 회의(§6) 기록.
+- **merge**: 사이클 행 상태 `완료`. 배포가 있으면 🚀 배포 DB 행 + 콜아웃 '최근 배포' 갱신.
+- **값/도구 형식**: `docs/notion-hub-layout.md` §8 준수 — relation=`"[\"https://app.notion.com/p/<id>\"]"`, date=`is_datetime`=1, multi_select=JSON 문자열, 행 생성=`notion-create-pages`(parent=`data_source_id`). 허브/ds ID 는 박힌 값 신뢰 말고 **허브를 fetch 해 현재 ID** 사용.
+- ⚠️ top-3 불릿 재작성의 텍스트에는 **순수 텍스트만**(`<database>` 태그 금지 — 중복 DB 양산 방지).
 
 - ⚠️ **옛 REST 미러는 제거됨**: `loop.mjs` 는 더 이상 `upsertDashboard`(타임라인 문단 append)·구조 삭제 reset 을 수행하지 않는다. `notion-api.mjs` 의 `dashboard.reset`/`dashboard.upsert` 는 **비파괴 no-op** 으로 바뀌었다(과거 `clearPageChildren` 가 섹션·DB를 통째로 날리던 버그 제거).
 - **top-3 불릿**: 섹션 DB에 행을 쓸 때마다 그 섹션의 상위 3개를 다시 뽑아 헤더 아래 불릿 블록을 **통째로 재작성**(순수 텍스트만, `<database>` 태그 금지 — 중복 DB 방지). 행 목록은 `harness/notion-state.json` 로컬 레지스트리로 관리.
