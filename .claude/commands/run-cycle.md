@@ -2,6 +2,8 @@
 
 > 사양서 참조: `docs/spec/interview-2026-06-11.md`
 
+> ⛔ **이 문서와 참조 사양 md 를 반드시 읽고 그대로 수행한다.** 매 사이클 오케스트레이터는 `run-cycle.md`(이 문서)·`.claude/agents/*.md`(역할)·`docs/eval-rubric.md`(채점)·`docs/notion-hub-layout.md`(허브)를 **읽고 실행**한다. **에이전트 페이즈를 no-op 로 건너뛰거나, 실제 평가 없이 점수로 통과시키지 않는다.** 매 사이클: **실제 구현 → 실제 평가(Playwright 화면 + 루브릭) → 토론 → 이번 사이클의 신선한 증거(`evaluations/<id>.json`(`stepId` 포함)·스크린샷·`decisions/<id>.md`)로만 통과**. done-gate 가 stale·다른-step 평가를 **거부**하므로 가짜 100점 통과는 불가능하다(아래 §done-gate).
+
 자율 개발 루프의 심장입니다. 드라이버 `scripts/loop.mjs` 를 **페이즈마다 재호출**하며 현재 step 을
 `decompose → design → implement → verify → evaluate → debate → merge` 순으로 완주시킵니다.
 
@@ -37,14 +39,14 @@
 
 | 페이즈      | 주도         | 산출/행위                                                                             |
 | ----------- | ------------ | ------------------------------------------------------------------------------------- |
-| `decompose` | 에이전트     | step 을 세부 작업으로 분해. `harness/decisions/<id>.md`.                              |
+| `decompose` | 에이전트     | step 분해(`harness/decisions/<id>.md`). **진입 시 드라이버가 `git-flow start-step` 으로 step 브랜치 생성**                              |
 | `design`    | 에이전트     | 설계·구조 결정 (architect 중심). ADR.                                                 |
 | `implement` | 에이전트     | 코드 구현 (ui/entity-modeler 등).                                                     |
 | `verify`    | **드라이버** | `done-gate --deterministic-only` (typecheck/lint/check-arch/test).                    |
 | `evaluate`  | 에이전트     | customer/quality/ux 채점 → `harness/evaluations/<id>.json` (종합 score + major 불만). |
 | `debate`    | 에이전트     | 평가 결과 토론·반박 → 재작업 결정. **드라이버**가 결과(pass/rework)로 전이 분기.       |
 | `vote`      | 에이전트     | (분기) 재작업 5회 초과 시에만 진입. 다수결+CEO 캐스팅보트 → `harness/decisions/<id>.md`. |
-| `merge`     | **드라이버** | done-gate(결정적 + 평가 임계치) 통과 시 `git-flow merge-step`.                        |
+| `merge`     | **드라이버** | done-gate 통과 시 `git-flow merge-step` → step 브랜치 push → main 병합 → main push(원격 시)                        |
 
 > `vote` 는 선형 시퀀스가 아니라 **분기 페이즈**입니다. `debate` 가 `rework` 판정을 냈는데
 > `reworkCount` 가 이미 5(=MAX_REWORK)에 도달했을 때만 `loop.mjs` 가 `merge` 대신 `vote` 로 보냅니다.
@@ -88,13 +90,29 @@ node scripts/loop.mjs
 - `merge` 후 다음 step 이 있으면 그 step 의 `decompose` 로 래핑, 없으면 `status=done`.
 - **멱등 재개**: `committed=false` 인데 페이즈가 done 표시면, 건너뛰지 않고 현재 페이즈를 재실행합니다.
 
-## Notion 자동 미러 (useMcp=true)
+## git 브랜치 라이프사이클 (사이클마다 브랜치)
 
-개발이 진행되는 동안 노션 기록은 **코드로 자동 적재**됩니다(판단이 아니라 기계적 부수효과이므로):
+각 step(사이클)은 **독립 브랜치**에서 작업하고 통과 시에만 main 에 병합·push 한다 — **절대 main 에서 직접 작업하지 않는다**(`assertNotDirectMainWork` 가드).
 
-- **대시보드 진행상황**: `loop.mjs` 가 매 페이즈 전이마다 현재 step/phase/scores 로 `upsertDashboard` 를 호출해 `harness/notion-outbox/dashboard-main.json` 을 갱신합니다.
-- **협의 결정 미러**: `logDecision`(결정 기록) 시 `mirrorDecisionComment` 로 결론을 댓글 스레드 페이로드(`harness/notion-outbox/decision-*.json`)로 적재합니다.
-- 둘 다 `config.useMcp=false` 면 **자동 no-op**. `useMcp=true` 면 `loop.mjs` 가 적재 직후 **`scripts/notion-flush.mjs` 를 best-effort 로 실행해 실제 Notion 에 자동 반영**합니다(REST API, `NOTION_TOKEN` 필요). 실패·오프라인이면 outbox 에 남아 다음 페이즈에 재시도합니다.
+1. **시작(seed)**: `git-flow seed-main` — main 에 초기 시드 커밋(없을 때만, 멱등). `/start-project` 가 1회 수행.
+2. **스텝 시작(`decompose` 진입)**: `loop.mjs` 가 `git-flow start-step <nn> <slug>` 를 호출해 **`step/<nn>-<slug>` 브랜치를 생성·체크아웃**한다. 이후 design/implement/verify 는 모두 이 브랜치에서 일어난다.
+3. **검증(`verify`)**: `done-gate --deterministic-only`(typecheck/lint/check-arch/test) — step 브랜치에서.
+4. **병합(`merge`)**: `git-flow merge-step <nn> <slug>` — done-gate 통과 시에만:
+   - 원격이 있으면 **step 브랜치를 push**(테스트 통과분 백업) →
+   - `step/<nn>-<slug>` 를 `main` 에 `--no-ff` 병합 →
+   - 원격이 있으면 **main 을 push**.
+5. **다음 스텝**: merge 후 다음 step 의 `decompose` 로 전진 → 다시 `start-step` 으로 **새 브랜치**를 딴다.
+
+> 원격(`origin`)이 없으면 push 는 **경고만 남기고 skip**(자율 유지). 원격은 `/start-project`(`init-project --git-remote=<url>`)로 붙인다. `skipGitFlow=true(useGit=false)` 면 위 git 동작 전체가 no-op.
+> 검증: `node scripts/git-flow.selftest.mjs`(push 시나리오 [4]/[5]) · `node scripts/loop.selftest.mjs`(시나리오 C: 사이클마다 브랜치 생성).
+
+## Notion 허브 갱신 (오케스트레이터·커넥터, 비파괴)
+
+라이브 허브(사양: `docs/notion-hub-layout.md`)는 **`/run-cycle` 오케스트레이터가 매 사이클 커넥터(MCP)로 직접** 갱신한다 — 계획·🔄 Cycles·🚨 이슈·🚀 배포 DB에 행을 쓰고, 섹션 상단 **top-3 불릿**(§1.1)과 콜아웃 상태줄을 다시 쓴다. **구조(섹션·인라인 DB·뷰·Team Roster)는 절대 건드리지 않는다.**
+
+- ⚠️ **옛 REST 미러는 제거됨**: `loop.mjs` 는 더 이상 `upsertDashboard`(타임라인 문단 append)·구조 삭제 reset 을 수행하지 않는다. `notion-api.mjs` 의 `dashboard.reset`/`dashboard.upsert` 는 **비파괴 no-op** 으로 바뀌었다(과거 `clearPageChildren` 가 섹션·DB를 통째로 날리던 버그 제거).
+- **top-3 불릿**: 섹션 DB에 행을 쓸 때마다 그 섹션의 상위 3개를 다시 뽑아 헤더 아래 불릿 블록을 **통째로 재작성**(순수 텍스트만, `<database>` 태그 금지 — 중복 DB 방지). 행 목록은 `harness/notion-state.json` 로컬 레지스트리로 관리.
+- `config.useMcp=false` 면 Notion 갱신은 전부 생략(자율 유지).
 
 ## 상태 확인 / 정리
 

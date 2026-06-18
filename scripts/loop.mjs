@@ -18,13 +18,12 @@
 //   needsRerun(state) 가 true(=committed=false 인데 phase 가 done 표시) 면
 //   건너뛰지 않고 현재 페이즈를 다시 실행합니다.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { advancePhase, defaultState, markCommitted, needsRerun, readState, stateFilePath, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation } from './done-gate.mjs';
-import { upsertDashboard } from './lib/notion.mjs';
 
 // step 당 페이즈 순서. merge 다음은 (다음 step 의) decompose 로 래핑한다.
 export const PHASE_ORDER = ['decompose', 'design', 'implement', 'verify', 'evaluate', 'debate', 'merge'];
@@ -247,6 +246,13 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	// debate 페이즈면 평가 결과(pass/rework)를 먼저 결정한다 — 전이 분기와 로그에 함께 사용.
 	const debateOutcome = phase === 'debate' ? resolveDebateOutcome(state, repoRoot, { debateOutcome: debateOutcomeOpt }) : 'pass';
 
+	// 스텝 시작(decompose) 진입 시 git step 브랜치(step/<nn>-<slug>)를 생성·체크아웃한다.
+	// 이후 모든 작업(구현·verify)이 main 이 아니라 step 브랜치에서 일어나고, merge 페이즈에서
+	// 그 브랜치를 main 에 병합·push 한다. (skipGitFlow 이거나 git-flow.mjs 없으면 자동 no-op)
+	if (phase === PHASE_ORDER[0]) {
+		startStepBranch(state, repoRoot);
+	}
+
 	if (DETERMINISTIC_PHASES.has(phase)) {
 		const r = runDeterministicPhase(phase, state, repoRoot);
 		note = `결정적 페이즈 '${phase}': ${r.note}`;
@@ -297,49 +303,26 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	}
 	writeState(statePath, advanced);
 
-	// Notion 자동 미러: useMcp 면 대시보드 진행상황 페이로드를 outbox 에 적재(아니면 no-op).
-	// 실패는 루프 진행에 영향 없음(미러는 부수효과). 실제 flush 는 오케스트레이터/MCP 가 수행.
-	try {
-		mirrorDashboardToNotion(repoRoot, advanced);
-		spawnNotionFlush(repoRoot);
-	} catch {
-		/* notion 미러/flush 실패는 루프에 영향 없음 */
-	}
+	// Notion 허브(계획·진행 상황·이슈·배포·top-3 불릿·콜아웃)는 /run-cycle 오케스트레이터가
+	// 매 사이클 **커넥터로 직접 비파괴 갱신**한다(docs/notion-hub-layout.md). loop.mjs 는 git·상태만
+	// 결정적으로 책임지며, 구조를 지우는 옛 REST 미러(upsertDashboard/flush)는 더 이상 수행하지 않는다.
 
 	return { state: advanced, executedPhase: phase, rerun, note, done };
 }
 
-/** 적재된 outbox 를 실제 Notion 에 반영(best-effort). useMcp=true 일 때만 별도 프로세스로 flush. */
-function spawnNotionFlush(repoRoot) {
-	try {
-		const cfgPath = path.join(repoRoot, 'harness', 'config.json');
-		if (!existsSync(cfgPath)) return;
-		if (JSON.parse(readFileSync(cfgPath, 'utf8')).useMcp !== true) return; // 비-MCP 면 프로세스 spawn 안 함
-	} catch {
-		return;
-	}
-	const flush = path.join(repoRoot, 'scripts', 'notion-flush.mjs');
-	if (!existsSync(flush)) return;
-	try {
-		execFileSync('node', [flush], { cwd: repoRoot, stdio: 'ignore', timeout: 30000 });
-	} catch {
-		/* flush 실패/타임아웃은 best-effort — 무시(outbox 에 남아 다음에 재시도) */
-	}
-}
-
-/** 현재 상태를 Notion 대시보드 갱신 페이로드로 변환해 적재(upsertDashboard, useMcp 게이트). */
-function mirrorDashboardToNotion(repoRoot, state) {
-	const steps = (state.planSteps ?? []).map((label, idx) => ({
-		label,
-		status:
-			state.status === 'done' || idx < (state.currentStepIdx ?? 0)
-				? 'done'
-				: idx === (state.currentStepIdx ?? 0)
-					? 'running'
-					: 'pending',
-		score: state.scores?.[`step-${idx}`]?.score ?? null,
-	}));
-	upsertDashboard(steps, state.scores ?? {}, { repoRoot });
+/**
+ * 스텝 시작 시 git step 브랜치(step/<nn>-<slug>)를 생성·체크아웃한다 (결정적 git 사이드이펙트).
+ * 내부적으로 git-flow.mjs 의 start-step 을 호출한다:
+ *   - skipGitFlow=true(=useGit=false) 면 git-flow 가 자동 no-op
+ *   - scripts/git-flow.mjs 가 없으면(예: 셀프테스트 temp cwd) 호출 자체를 생략
+ * start-step 실패(예: main 미시드)도 루프는 막지 않는다(로그만 — 문제는 merge 에서 드러남).
+ */
+function startStepBranch(state, repoRoot) {
+	const gitFlow = path.join(repoRoot, 'scripts', 'git-flow.mjs');
+	if (!existsSync(gitFlow)) return;
+	const { nn, slug } = deriveStepRef(state);
+	const r = runNode([gitFlow, 'start-step', nn, slug], repoRoot);
+	log(`step 브랜치 준비: git-flow start-step ${nn} ${slug} (exit ${r.code})`);
 }
 
 /** cycles 로그 엔트리 구성 (결정적 — Date 대신 phaseSeq/checkpointToken 사용) */

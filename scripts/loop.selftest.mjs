@@ -9,7 +9,7 @@
 // 임시 cwd 에는 scripts/done-gate.mjs / scripts/git-flow.mjs 가 없으므로
 // verify/merge 결정적 페이즈는 no-op 통과 처리되어, 시퀀싱만 순수하게 검증됩니다.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -187,6 +187,52 @@ try {
 } finally {
 	try {
 		rmSync(tmpDirB, { recursive: true, force: true });
+	} catch {
+		// 정리 실패는 결과에 영향 없음
+	}
+}
+
+// ── 시나리오 C: start-step 배선 — 사이클마다 git step 브랜치를 생성한다 ──
+console.log('');
+console.log('=== loop selftest C: start-step (사이클마다 브랜치) ===');
+const tmpDirC = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-gitbranch-'));
+try {
+	try {
+		execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDirC, stdio: 'pipe' });
+	} catch {
+		execFileSync('git', ['init'], { cwd: tmpDirC, stdio: 'pipe' });
+		execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: tmpDirC, stdio: 'pipe' });
+	}
+	execFileSync('git', ['config', 'user.name', 'Harness Selftest'], { cwd: tmpDirC, stdio: 'pipe' });
+	execFileSync('git', ['config', 'user.email', 'selftest@harness.local'], { cwd: tmpDirC, stdio: 'pipe' });
+	execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: tmpDirC, stdio: 'pipe' });
+	mkdirSync(path.join(tmpDirC, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpDirC, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpDirC, 'harness', 'config.json'),
+		JSON.stringify({ useGit: true, useMcp: false, mcpServers: [], skipGitFlow: false }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpDirC, 'README.md'), '# fixture\n', 'utf8');
+	// loop 은 cwd/scripts/git-flow.mjs 를 호출하므로 그 파일을 temp 로 복사한다.
+	copyFileSync(path.join(scriptsDir, 'git-flow.mjs'), path.join(tmpDirC, 'scripts', 'git-flow.mjs'));
+	// start-step 의 전제: main 시드
+	execFileSync('node', [path.join(tmpDirC, 'scripts', 'git-flow.mjs'), 'seed-main'], { cwd: tmpDirC, stdio: 'pipe' });
+	// loop --init → decompose 실행 → start-step 으로 step/01-gitbranch 생성·체크아웃
+	const cFirst = invokeLoop(tmpDirC, ['--init', '01-gitbranch']);
+	check('C: loop --init exit 0', cFirst.code === 0);
+	let curBranchC = '';
+	try {
+		curBranchC = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: tmpDirC, encoding: 'utf8' }).trim();
+	} catch {
+		curBranchC = '';
+	}
+	check('C: decompose 진입 시 step/01-gitbranch 생성·체크아웃', curBranchC === 'step/01-gitbranch');
+} catch (err) {
+	failures.push(`C 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpDirC, { recursive: true, force: true });
 	} catch {
 		// 정리 실패는 결과에 영향 없음
 	}

@@ -24,6 +24,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { applyInjectedScore, DIMENSIONS, scoreObservations } from './lib/rubric.mjs';
+import { readState, stateFilePath } from './lib/state.mjs';
 import { isPortInUse, teardownDevServer } from './lib/teardown.mjs';
 
 const DEFAULT_PORT = 8000;
@@ -353,8 +354,16 @@ export async function runEvaluation(opts, repoRoot) {
 			majorComplaints: opts.majorComplaints,
 		});
 
+		// 현재 step/사이클 식별자를 평가에 스탬프한다 — done-gate 의 freshness 게이트가
+		// "이번 사이클의 신선한 평가"인지 검증하는 데 쓴다(stale 평가 가짜 통과 차단).
+		const st = readState(stateFilePath(repoRoot));
+		const stepId = `step-${st?.currentStepIdx ?? 0}`;
+		const phaseSeq = st?.phaseSeq ?? null;
+
 		const evalObj = {
 			id,
+			stepId,
+			phaseSeq,
 			createdAt: new Date().toISOString(),
 			mode,
 			score: finalScore.score,

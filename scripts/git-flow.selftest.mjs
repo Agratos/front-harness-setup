@@ -207,6 +207,54 @@ try {
 	}
 }
 
+function runRemoteFlowTests() {
+	console.log('[4] origin push — 원격 있으면 step 브랜치·main push');
+	const dir = makeTempRepo(false);
+	const bare = mkdtempSync(path.join(os.tmpdir(), 'gitflow-bare-'));
+	try {
+		execFileSync('git', ['init', '--bare', bare], { stdio: 'pipe' });
+		execFileSync('git', ['remote', 'add', 'origin', bare], { cwd: dir, stdio: 'pipe' });
+		runGitFlow(dir, ['seed-main']);
+		runGitFlow(dir, ['start-step', '01', 'pushdemo']);
+		writeFileSync(path.join(dir, 'p.txt'), 'push work\n', 'utf8');
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: push step work']);
+		const merge = runGitFlow(dir, ['merge-step', '01', 'pushdemo', '--gate-ok']);
+		check('remote merge-step exit 0', merge.code === 0);
+		check('merge-step 로그에 main push 완료', /push 완료: origin main/.test(merge.stdout));
+		check('merge-step 로그에 step 브랜치 push 완료', /push 완료: origin step\/01-pushdemo/.test(merge.stdout));
+		const bareRef = (name) => {
+			try {
+				return execFileSync('git', ['rev-parse', name], { cwd: bare, encoding: 'utf8' }).trim();
+			} catch {
+				return '';
+			}
+		};
+		check('원격(bare) main == 로컬 main (push 반영)', bareRef('main') !== '' && bareRef('main') === git(dir, ['rev-parse', 'main']));
+		check('원격(bare) 에 step 브랜치 push 됨', bareRef('step/01-pushdemo') !== '');
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+		rmSync(bare, { recursive: true, force: true });
+	}
+}
+
+function runNoRemotePushSkipTest() {
+	console.log('[5] origin 없으면 push 생략 (병합은 계속)');
+	const dir = makeTempRepo(false);
+	try {
+		runGitFlow(dir, ['seed-main']);
+		runGitFlow(dir, ['start-step', '01', 'noremote']);
+		writeFileSync(path.join(dir, 'n.txt'), 'no remote\n', 'utf8');
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: no-remote work']);
+		const merge = runGitFlow(dir, ['merge-step', '01', 'noremote', '--gate-ok']);
+		check('no-remote merge-step exit 0', merge.code === 0);
+		check('no-remote merge-step push 생략 로그', /push 생략: origin 미설정/.test(merge.stdout));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
 function main() {
 	console.log('=== git-flow selftest (임시 저장소에서만 실행) ===');
 	console.log(`temp base: ${os.tmpdir()}`);
@@ -214,6 +262,8 @@ function main() {
 		runMainFlowTests();
 		runSkipFlowTests();
 		runDirectMainGuardTests();
+		runRemoteFlowTests();
+		runNoRemotePushSkipTest();
 	} catch (err) {
 		console.error('SELFTEST 예외:', err.message);
 		failures.push(`예외: ${err.message}`);

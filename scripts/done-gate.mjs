@@ -200,6 +200,8 @@ export function loadLatestEvaluation(repoRoot) {
 			score: Number(raw.score ?? raw.total ?? NaN),
 			majorComplaints: Number(raw.majorComplaints ?? raw.major ?? 0),
 			id: path.basename(latest, '.json'),
+			stepId: raw.stepId ?? null,
+			phaseSeq: raw.phaseSeq ?? null,
 		};
 	} catch {
 		return null;
@@ -288,6 +290,20 @@ export function runDoneGate(opts, repoRoot) {
 		return { exitCode: 1, result };
 	}
 	result.evaluation = evaluation;
+
+	// freshness 게이트: 파일 기반 평가는 **현재 step 의 이번 사이클 평가**여야 한다.
+	// 이전에 남은 평가(예: eval-0001 score=100)가 모든 step 을 도장 찍어 "가짜 통과"시키던
+	// 버그를 막는다 — eval JSON 의 stepId 가 현재 step 과 다르면(또는 없으면) 거부.
+	// (주입 평가 `--score`/env 는 CI·테스트 경로이므로 freshness 면제: source==='injected')
+	if (evaluation.source === 'file' && evaluation.stepId !== stepId) {
+		result.hysteresis = {
+			pass: false,
+			latched: false,
+			reason: `stale 평가 거부: eval.stepId=${evaluation.stepId ?? '없음'} ≠ 현재 ${stepId} → 이번 사이클의 신선한 평가 필요(가짜 통과 차단)`,
+		};
+		result.passed = false;
+		return { exitCode: 1, result };
+	}
 
 	const wasLatched = !!(state?.scores?.[stepId]?.latched);
 	const hyst = evaluateHysteresis(evaluation, wasLatched);

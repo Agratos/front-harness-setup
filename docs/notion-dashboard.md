@@ -4,6 +4,8 @@
 표현하는 대시보드 스펙입니다. 구현 어댑터는 `scripts/lib/notion.mjs` 이며,
 `harness/config.json` 의 `useMcp` 플래그로 게이트됩니다.
 
+> ⚠️ **레거시 / 비파괴 주의.** 이 "대시보드(타임라인)" 모델은 현재 **새 허브 모델(`docs/notion-hub-layout.md`)로 대체**되었습니다. `notion-api.mjs` 의 `dashboard.reset`/`dashboard.upsert` 는 더 이상 페이지 블록을 삭제·append 하지 않고 **비파괴 no-op** 입니다(과거 `clearPageChildren` 가 허브 구조를 통째로 날리던 버그 제거). 라이브 허브 갱신은 `/run-cycle` 오케스트레이터가 **커넥터로** 수행합니다(`run-cycle.md` §Notion 허브 갱신).
+
 ---
 
 ## 1. 동작 모델 — outbox(아웃박스) 패턴

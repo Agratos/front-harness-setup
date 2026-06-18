@@ -10,7 +10,7 @@
 //   2) score=89 / major=0  → 여전히 통과 (래치됨, hold band 88~90 안 → no-flap)
 //   3) score=87 / major=0  → 탈락 (HOLD(88) 미만 → 래치 해제)
 //   4) 88~90 경계에서 래치 후 반복 평가해도 플래핑 없음
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -111,6 +111,20 @@ try {
 	// 5) 래치 후 87 로 떨어지면 탈락(경계 아래는 정상 탈락)
 	const r5 = runGateInjected(tmpDir, 87, 0);
 	check('[5] 래치 후 87 → 탈락(exitCode 1)', r5.exitCode === 1);
+
+	// 6) freshness 게이트 — 파일 기반 평가는 현재 step 의 것이어야 통과 (stale 가짜 통과 차단)
+	const evalDir = path.join(tmpDir, 'harness', 'evaluations');
+	mkdirSync(evalDir, { recursive: true });
+	// (a) stepId 없는 stale 평가(score 100) → 거부
+	writeFileSync(path.join(evalDir, 'eval-0001.json'), JSON.stringify({ id: 'eval-0001', score: 100, majorComplaints: 0 }) + '\n', 'utf8');
+	const rStale = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
+	check('[6a] stepId 없는 stale 평가(100) → 거부(exit 1)', rStale.exitCode === 1);
+	check('[6a] 거부 사유에 "stale 평가 거부" 표기', /stale 평가 거부/.test(rStale.result.hysteresis?.reason ?? ''));
+	// (b) 현재 step(step-0) 의 신선한 평가(95) → 통과
+	writeFileSync(path.join(evalDir, 'eval-0002.json'), JSON.stringify({ id: 'eval-0002', stepId: 'step-0', score: 95, majorComplaints: 0 }) + '\n', 'utf8');
+	const rFresh = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
+	check('[6b] 현재 step(step-0) 신선 평가(95) → 통과(exit 0)', rFresh.exitCode === 0);
+	check('[6b] 평가 source=file 로 채택', rFresh.result.evaluation?.source === 'file');
 } catch (err) {
 	failures.push(`예외: ${err && err.stack ? err.stack : String(err)}`);
 } finally {

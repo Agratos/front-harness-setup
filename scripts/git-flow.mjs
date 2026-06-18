@@ -91,6 +91,26 @@ function mainCommitCount() {
 	return r.ok ? Number(r.out) : 0;
 }
 
+/** origin 원격이 설정돼 있는가 */
+function hasRemote() {
+	const r = gitSafe(['remote', 'get-url', 'origin']);
+	return r.ok && !!r.out;
+}
+
+/**
+ * origin 이 있으면 ref(브랜치)를 push 한다 (best-effort).
+ * origin 이 없으면 skip 로그만 남기고, push 실패도 throw 하지 않는다(병합/자율 흐름을 막지 않음).
+ */
+function pushIfRemote(ref) {
+	if (!hasRemote()) {
+		log(`push 생략: origin 미설정 (${ref})`);
+		return;
+	}
+	const r = gitSafe(['push', '-u', 'origin', ref]);
+	if (r.ok) log(`push 완료: origin ${ref}`);
+	else log(`push 실패(무시 — 병합은 계속): origin ${ref} (exit ${r.code})`);
+}
+
 /**
  * 직접 main 작업 차단 가드.
  * seed-main 을 제외한 step 작업이 main 브랜치에서 직접 커밋되는 것을 거부합니다.
@@ -224,10 +244,16 @@ function cmdMergeStep(nn, slug, extraArgs) {
 	}
 	log(`done-gate 통과: ${gate.reason}`);
 
+	// 테스트 통과분(step 브랜치)을 원격에 먼저 push 한다 — origin 있을 때만, 없으면 skip(자율 유지).
+	pushIfRemote(branch);
+
 	// merge-step 이 seed 이후 main 에 쓰기를 하는 유일한 경로.
 	git(['checkout', 'main']);
 	git(['merge', '--no-ff', branch, '-m', `merge: ${branch} → main`]);
 	log(`merge-step 완료: '${branch}' → main 병합 (총 ${mainCommitCount()}개 커밋)`);
+
+	// 병합된 main 을 원격에 push (origin 있을 때만).
+	pushIfRemote('main');
 	return 0;
 }
 

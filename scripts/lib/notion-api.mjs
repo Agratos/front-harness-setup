@@ -2,8 +2,8 @@
 //
 // notion.mjs 는 페이로드를 harness/notion-outbox/ 에 "적재"만 합니다(결정론적, 오프라인 안전).
 // 이 모듈은 그 적재분을 실제 Notion 에 전송해 **라이브 반영**합니다:
-//   - dashboard.reset  : 대시보드 페이지의 자식 블록을 모두 비우고 "초기화됨" 콜아웃 추가
-//   - dashboard.upsert : 진행상황 한 줄을 페이지에 append (타임라인식 진행 로그)
+//   - dashboard.reset  : (비파괴) 구조 보존 no-op — 데이터 정리는 커넥터/오케스트레이터가 수행
+//   - dashboard.upsert : (비파괴) no-op — 새 허브는 DB 행 + top-3 불릿으로 표현(커넥터가 갱신)
 //   - decision.comment.mirror : 페이지에 결정 결론을 댓글로 추가
 //
 // 토큰/페이지/네트워크가 없으면 조용히 skip 합니다(개발 루프를 막지 않음 — best-effort).
@@ -59,14 +59,6 @@ export function summarizeDashboard(payload) {
 	return parts.join(' · ');
 }
 
-/** 블록 빌더 */
-function paragraphBlock(text) {
-	return { object: 'block', type: 'paragraph', paragraph: { rich_text: richText(text) } };
-}
-function calloutBlock(text, emoji = '🔄') {
-	return { object: 'block', type: 'callout', callout: { rich_text: richText(text), icon: { type: 'emoji', emoji } } };
-}
-
 function headers(token) {
 	return { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' };
 }
@@ -91,36 +83,6 @@ async function notionFetch(method, url, token, body, timeoutMs = 15000) {
 	}
 }
 
-/**
- * 페이지의 자식 블록을 모두 archive(비우기).
- * GET→DELETE 를 남은 블록이 없을 때까지 반복(최대 6 pass)한다 — 일시 DELETE 실패·
- * 페이지네이션(>100)·rate limit 으로 한 번에 다 못 지우는 경우를 견고하게 처리.
- * 한 pass 에서 하나도 못 지우면(특수 블록 등) 무한 루프 방지를 위해 중단한다.
- */
-async function clearPageChildren(pageId, token) {
-	let archived = 0;
-	for (let pass = 0; pass < 6; pass++) {
-		const r = await notionFetch('GET', `${API}/blocks/${pageId}/children?page_size=100`, token);
-		if (!r.ok) return { ok: false, status: r.status, archived };
-		const results = r.json?.results ?? [];
-		if (results.length === 0) return { ok: true, archived };
-		let progressed = false;
-		for (const block of results) {
-			const d = await notionFetch('DELETE', `${API}/blocks/${block.id}`, token);
-			if (d.ok) {
-				archived++;
-				progressed = true;
-			}
-		}
-		if (!progressed) return { ok: true, archived, note: '일부 블록을 비우지 못함(특수 블록 가능)' };
-	}
-	return { ok: true, archived };
-}
-
-async function appendBlocks(pageId, token, children) {
-	return notionFetch('PATCH', `${API}/blocks/${pageId}/children`, token, { children });
-}
-
 async function addComment(pageId, token, text) {
 	return notionFetch('POST', `${API}/comments`, token, { parent: { page_id: pageId }, rich_text: richText(text) });
 }
@@ -134,14 +96,15 @@ export async function applyPayload(payload, token, defaultPageId) {
 	if (!pageId) return { ok: false, reason: 'pageId 없음' };
 
 	if (payload.kind === 'dashboard.reset') {
-		const cleared = await clearPageChildren(pageId, token);
-		if (!cleared.ok) return cleared;
-		const name = payload?.resetCallout?.projectName;
-		await appendBlocks(pageId, token, [calloutBlock(`새 프로젝트로 초기화됨${name ? ` — ${name}` : ''}`)]);
-		return { ok: true, archived: cleared.archived };
+		// 비파괴: 허브의 기본 구조(섹션·인라인 DB·뷰·Team Roster)는 절대 건드리지 않는다.
+		// 과거의 clearPageChildren(전체 블록 삭제)는 구조까지 날려 제거됨. 데이터 초기화(DB 행·
+		// 콜아웃·top-3 불릿)는 /run-cycle 오케스트레이터가 커넥터로 수행한다(docs/notion-hub-layout.md §7).
+		return { ok: true, skipped: true, note: '비파괴 reset — 구조 보존(데이터 정리는 커넥터가 수행)' };
 	}
 	if (payload.kind === 'dashboard.upsert') {
-		return appendBlocks(pageId, token, [paragraphBlock(summarizeDashboard(payload))]);
+		// 비파괴: 새 허브는 타임라인 문단 append 가 아니라 DB 행 + top-3 불릿으로 진행을 표현한다.
+		// 그 갱신은 오케스트레이터가 커넥터로 수행하므로 여기서는 no-op.
+		return { ok: true, skipped: true, note: '비파괴 upsert — 새 허브는 커넥터로 갱신' };
 	}
 	if (payload.kind === 'decision.comment.mirror') {
 		return addComment(pageId, token, `[결정 ${payload.decisionId ?? ''}] ${payload.text ?? ''}`.trim());
