@@ -51,6 +51,17 @@
 > `vote` 는 선형 시퀀스가 아니라 **분기 페이즈**입니다. `debate` 가 `rework` 판정을 냈는데
 > `reworkCount` 가 이미 5(=MAX_REWORK)에 도달했을 때만 `loop.mjs` 가 `merge` 대신 `vote` 로 보냅니다.
 
+## evaluate — 캡처물(스크린샷+DOM) 소비 평가 ⛔ (무조건)
+
+> ⛔ **UI/UX 평가를 루브릭 숫자만으로 끝내지 않는다.** `eval-playwright.mjs` 는 `harness/evaluations/<id>/` 에 **`screenshot.png`(데스크톱)·`screenshot-mobile.png`(375px)·`dom.html`** 를 남긴다. 오케스트레이터는 evaluate 에서:
+>
+> 1. `eval-playwright.mjs` 로 루브릭 베이스라인 + 캡처물을 생성한다.
+> 2. **customer·ui·ux 에이전트가 그 `screenshot.png`(+모바일) 이미지를 `Read` 로 직접 "보고"(이미지가 렌더됨), `dom.html` 을 읽고** 레이아웃·여백(padding)·정렬·간격·시각 위계·반응형·사용 흐름·a11y 를 평가한다.
+> 3. 그 시각/UX 판정을 `evaluations/<id>.json` 의 `score`·`complaints` 로 **반영**한다(시각/UX 결함 = minor~major). 루브릭("앱이 떴는가")은 **하한**일 뿐, "잘 보이는가·쓸 만한가"는 **캡처물을 본 에이전트**가 정한다.
+> 4. UI/UX 결함이 나오면 🚨 이슈 트래커 행 + 회의(§6)로 처리 → rework.
+>
+> ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키면 **평가 무효**(실제 사고: 사이드 padding 없는 UI 가 96점 통과). `config.useMcp=false`/Playwright 미설치일 때만 정적 폴백.
+
 ## done-gate 통과 시 merge
 
 `merge` 페이즈에서 `git-flow merge-step` 이 내부적으로 `done-gate.mjs` 를 호출합니다.

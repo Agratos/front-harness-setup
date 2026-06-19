@@ -196,6 +196,9 @@ async function playwrightObservations(pw, port, shotPath, { gatesGreen, expected
 
 		mkdirSync(path.dirname(shotPath), { recursive: true });
 		await page.screenshot({ path: shotPath, fullPage: true });
+		// DOM/HTML 덤프 — ui/ux/customer 에이전트가 평가 시 실제로 읽도록 로그로 남긴다(B3: 캡처물 소비 평가).
+		const domPath = path.join(path.dirname(shotPath), 'dom.html');
+		writeFileSync(domPath, await page.content(), 'utf8');
 
 		// a11y(경량): landmark 존재 여부 + html lang / img alt / 접근가능한 이름 위반 카운트
 		const hasLandmarks =
@@ -211,9 +214,11 @@ async function playwrightObservations(pw, port, shotPath, { gatesGreen, expected
 			return v;
 		});
 
-		// 반응형: 모바일 폭(375px)에서 가로 overflow(스크롤)가 없는지 확인 후 원복
+		// 반응형: 모바일 폭(375px)에서 가로 overflow(스크롤) 확인 + 모바일 화면 캡처(B3) 후 원복
 		await page.setViewportSize({ width: 375, height: 800 });
 		const responsiveLayout = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+		const mobileShotPath = path.join(path.dirname(shotPath), 'screenshot-mobile.png');
+		await page.screenshot({ path: mobileShotPath, fullPage: true });
 		await page.setViewportSize({ width: 1280, height: 800 });
 
 		// 실제 내비게이션: 첫 내부 링크 클릭 후에도 앱(#root)이 살아있는지 (단일 페이지면 기본 통과)
@@ -251,6 +256,8 @@ async function playwrightObservations(pw, port, shotPath, { gatesGreen, expected
 			a11yViolations,
 			gatesGreen: gatesGreen !== false,
 			screenshotOk: existsSync(shotPath),
+			domOk: existsSync(domPath),
+			screenshotMobileOk: existsSync(mobileShotPath),
 			observable: true,
 			_raw: { title, rootChildren, consoleErrors, runtimeErrors, hasLandmarks, a11yViolations, responsiveLayout, navigable },
 		};
@@ -388,6 +395,9 @@ export async function runEvaluation(opts, repoRoot) {
 			complaints: finalScore.complaints,
 			observations,
 			screenshot: observations.screenshotOk ? shotRel : null,
+			// B3: ui/ux/customer 에이전트가 평가 시 실제로 볼/읽을 캡처물 경로
+			screenshotMobile: observations.screenshotMobileOk ? `harness/evaluations/${id}/screenshot-mobile.png` : null,
+			dom: observations.domOk ? `harness/evaluations/${id}/dom.html` : null,
 		};
 
 		const { jsonPath, mdPath } = writeEvaluation(repoRoot, id, evalObj, evalObj.screenshot);
