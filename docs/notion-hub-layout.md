@@ -231,10 +231,10 @@
 | 역할 | select | CEO/PO · PM · Architect · Entity Modeler · Frontend Dev · UX · QA Engineer · Quality · Customer |
 | 스킬 | multi_select | React · TypeScript · FSD · Zustand · Zod · Mantine · Vite · Playwright · a11y · CI/CD · Workflow |
 | 에이전트 ID | text | 에이전트 슬러그 (ceo·pm·architect·entity-modeler·ui·ux·qa·quality·customer) |
-| 메모 | text | 책임·산출물 한 줄 |
+| 메모 | text | **역할 한글 설명(한 줄)** — 기본 뷰에 표시(영문 역할/태그만으론 안 들어와서 한글 설명 필수) |
 | 합류일 | date | 시간 포함 |
 
-- 표시 컬럼: **이름 · 역할 · 에이전트 ID · 스킬**
+- 표시 컬럼: **이름 · 역할 · 메모(한글 설명) · 에이전트 ID · 스킬** (메모 = 각 에이전트 역할 한글 한 줄)
 - **하네스 에이전트 9종** 등록(= `.claude/agents/*.md`): ceo · pm · architect · entity-modeler · ui · ux · qa · quality · customer.
 - 에이전트 레퍼런스. **초기화 대상 제외**(프로젝트별 데이터 아님).
 - ⚠️ 잔존 dangling relation(`담당 Tasks`·`담당 마일스톤`·`참여 결정`)은 옛 템플릿 잔재 — 뷰에 미표시. 필요 시 `DROP COLUMN` 으로 정리 가능.
