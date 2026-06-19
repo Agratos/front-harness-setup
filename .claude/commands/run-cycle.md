@@ -62,6 +62,14 @@
 >
 > ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키면 **평가 무효**(실제 사고: 사이드 padding 없는 UI 가 96점 통과). `config.useMcp=false`/Playwright 미설치일 때만 정적 폴백.
 
+## verify/QA — 상호작용(E2E) 검증 ⛔ (무조건)
+
+> ⛔ **단위 테스트·정적 렌더만으로 "동작"을 통과시키지 않는다.** QA(`.claude/agents/qa.md`)/오케스트레이터는 핵심 유스케이스를 **실제로 조작**해 단언한다: `node scripts/eval-scenario.mjs`(dev 서버 + Playwright). 스펙 `harness/eval-scenario.json` = 액션(`fill`/`select`/`click`) + 단언(`textVisible`/**`inputEmpty`**/`inputValue`/`minCount`/`textGone`).
+>
+> - 반드시 단언: **제출 후 폼 초기화**(inputEmpty), 추가/토글/필터 후 목록·통계 반영, 상태 변경이 실제 적용되는지, 입력 검증(잘못된 값 거부).
+> - 실패 단언 → **기능 결함(major)** → `harness/errors/`·평가 반영 → done-gate FAIL → rework.
+> - ⚠️ 실제 사고: "추가 후 폼 미초기화·재추가 미적용"이 단위테스트·스크린샷을 **통과**했고, 상호작용 단언으로만 잡혔다(uncontrolled 폼 `form.key` 누락). `config.useMcp`/Playwright/서버 부재 시에만 skip.
+
 ## done-gate 통과 시 merge
 
 `merge` 페이즈에서 `git-flow merge-step` 이 내부적으로 `done-gate.mjs` 를 호출합니다.

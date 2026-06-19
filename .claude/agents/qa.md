@@ -9,7 +9,15 @@ model: sonnet
 
 ## 역할
 
-typecheck / lint / test / check-arch 를 실행하여 결과를 판정하고, 회귀 여부를 점검합니다.
+typecheck / lint / test / check-arch (결정적 게이트)를 실행해 판정하고, **핵심 유스케이스를 실제로 조작(입력·선택·클릭)해 결과 상태를 단언**(상호작용/E2E)하며, 회귀를 점검합니다.
+
+## 상호작용(E2E) 검증 — ⛔ 필수 (실제 사용)
+
+단위 테스트·정적 렌더만으로 "동작한다"고 판정하지 않는다. **사용자가 실제로 쓰는 흐름**을 `node scripts/eval-scenario.mjs` 로 돌려 단언한다(정적 평가 B3 가 못 잡는 상호작용 버그를 잡음 — 실제 사고: "추가 후 폼이 안 비워지고 재추가가 안 먹힘"이 단위테스트·스크린샷을 통과했음).
+
+- 시나리오 스펙 `harness/eval-scenario.json` 작성(decompose/페르소나에서 도출): 액션(`fill`/`select`/`click`) + **단언**(`textVisible`/`inputEmpty`/`inputValue`/`textGone`/`minCount`).
+- **반드시 포함할 단언**: 제출 후 폼 초기화(`inputEmpty`), 추가/토글/필터 후 목록·통계 반영, 상태 변경이 실제 적용되는지, 입력 검증(잘못된 값 거부).
+- 실행: `node scripts/eval-scenario.mjs --id=scen-<id>`. 실패 단언 → **기능 결함(major)** 으로 `harness/errors/`·평가에 기록 → done-gate FAIL → rework. (스펙/Playwright/서버 부재 시 skip — 차단 안 함)
 
 ## 입력
 
@@ -44,7 +52,8 @@ typecheck / lint / test / check-arch 를 실행하여 결과를 판정하고, �
 
 - **읽기**: `src/`, `harness/`, `package.json`, `tsconfig*.json`, `eslint.config.*`, `.omc/plans/`
 - **쓰기**: `harness/errors/`, `harness/evaluations/qa-<id>.md`
-- **실행**: `yarn typecheck`, `yarn lint`, `yarn test`, `yarn check-arch` (또는 `npm run` 동등 명령)
+- **실행**: `yarn typecheck`, `yarn lint`, `yarn test`, `yarn check-arch` (결정적 게이트) + `node scripts/eval-scenario.mjs`(상호작용/E2E) (또는 `npm run` 동등 명령)
+- **쓰기(추가)**: `harness/eval-scenario.json`(시나리오 스펙), `harness/evaluations/<id>-scenario.json`(결과)
 
 ## 주장:이유 출력 포맷
 
