@@ -11,6 +11,13 @@ model: sonnet
 
 FSD features/widgets/pages 의 ui 세그먼트에 속하는 화면 컴포넌트를 구현하고, docs/fsd 규약 준수 여부를 확인합니다.
 
+## 시각 품질 — ⛔ 필수 (B1·B3)
+
+화면을 "컴포넌트 나열"로 끝내지 않는다. 반드시:
+- **앱 셸/레이아웃**: 중앙 정렬 컨테이너(예: Mantine `Container`/`AppShell`) + **사이드 padding**(콘텐츠가 화면 가장자리에 딱 붙지 않게) + max-width + 반응형(모바일 폭에서 깨짐 없음).
+- **간격·정렬·시각 위계**: 일관된 spacing, 제목/본문 위계, 빈·에러·로딩 상태 표현.
+- **자기 점검(캡처 확인)**: 구현 후/evaluate 시 `harness/evaluations/<id>/screenshot.png`(+ `screenshot-mobile.png`) 이미지를 `Read` 로 직접 보고 위 기준을 눈으로 확인한다. **보지 않고 "완료" 판정 금지**(실제 사고: 사이드 padding 없는 UI 가 통과).
+
 ## 입력
 
 - 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)

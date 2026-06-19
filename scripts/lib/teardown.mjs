@@ -77,6 +77,37 @@ export async function killProcessTree(pid) {
 	}
 }
 
+/**
+ * 지정 포트를 LISTEN 중인 PID 목록을 조회한다(pid 트리/그룹 종료가 놓친 잔존 프로세스 대비).
+ *  - Windows: `netstat -ano` 파싱(LISTENING + LocalAddress 가 :port).
+ *  - POSIX: `lsof -ti :port`.
+ * @param {number} port
+ * @returns {Promise<number[]>}
+ */
+export async function pidsOnPort(port) {
+	if (isWin) {
+		const r = await run('netstat', ['-ano']);
+		const pids = new Set();
+		for (const line of r.stdout.split(/\r?\n/)) {
+			if (!/LISTENING/i.test(line)) continue;
+			const cols = line.trim().split(/\s+/);
+			const local = cols[1] ?? '';
+			const pid = cols[cols.length - 1];
+			if (local.endsWith(`:${port}`) && /^\d+$/.test(pid) && pid !== '0') pids.add(Number(pid));
+		}
+		return [...pids];
+	}
+	const r = await run('lsof', ['-ti', `:${port}`]);
+	return [...new Set(r.stdout.split(/\s+/).filter((s) => /^\d+$/.test(s)).map(Number))];
+}
+
+/** 포트를 점유한 listener PID 들을 트리째 종료한다(포트 기준 폴백). */
+export async function killByPort(port) {
+	const pids = await pidsOnPort(port);
+	for (const pid of pids) await killProcessTree(pid);
+	return pids;
+}
+
 /** ms 만큼 대기 (폴링용). */
 function delay(ms) {
 	return new Promise((r) => setTimeout(r, ms));
@@ -113,5 +144,21 @@ export async function teardownDevServer({ pid, port, child, retries = 20, interv
 		await delay(intervalMs);
 	}
 
-	return { killed, portFree, port, pid: effectivePid };
+	// 폴백(A3): pid 트리 종료가 놓쳤어도 포트가 여전히 점유 중이면, 포트 기준으로 listener 를
+	// 찾아 트리째 종료한다(간헐 orphan dev 서버 방지). 종료 후 한 번 더 폴링.
+	let portKill = [];
+	if (!portFree) {
+		portKill = await killByPort(port);
+		if (portKill.length) {
+			for (let i = 0; i < retries; i++) {
+				if (!(await isPortInUse(port, 500))) {
+					portFree = true;
+					break;
+				}
+				await delay(intervalMs);
+			}
+		}
+	}
+
+	return { killed, portFree, port, pid: effectivePid, portKill };
 }

@@ -147,3 +147,13 @@
 
 > 동일 입력(관찰값/주입값) → 항상 동일 점수. Math.random / 현재시각은 점수 산출에 사용하지 않습니다
 > (`createdAt` 타임스탬프는 점수와 무관한 메타데이터일 뿐입니다).
+
+---
+
+## 6. 캡처물 소비 평가 — 루브릭은 하한 (B3)
+
+위 결정적 루브릭은 **"앱이 떴는가"의 하한**일 뿐이다. **"잘 보이는가·쓸 만한가"(시각 품질·레이아웃·여백·UX)는 캡처물을 본 에이전트가 판정**한다.
+
+- `scripts/eval-playwright.mjs` 는 매 평가에서 `harness/evaluations/<id>/` 에 **`screenshot.png`(데스크톱)·`screenshot-mobile.png`(375px)·`dom.html`** 를 남긴다(eval JSON 의 `screenshot`/`screenshotMobile`/`dom` 필드).
+- **customer·ui·ux 에이전트는 그 스크린샷 이미지를 `Read` 로 직접 보고(이미지 렌더), `dom.html` 을 읽어** 레이아웃·사이드 padding·정렬·간격·시각 위계·반응형·사용 흐름·a11y 를 평가하고, 그 결과를 `<id>.json` 의 `score`·`complaints`(시각/UX 결함 = minor~major)에 반영한다.
+- ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키는 평가는 **무효**(실제 사고: 사이드 padding 없는 UI 가 96점 통과). `run-cycle.md` "evaluate — 캡처물 소비 평가" 절 참조.
