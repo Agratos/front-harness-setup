@@ -187,7 +187,8 @@ export function loadLatestEvaluation(repoRoot) {
 	if (!existsSync(dir)) return null;
 	let entries;
 	try {
-		entries = readdirSync(dir).filter((f) => f.endsWith('.json'));
+		// 평가 파일은 `eval-*.json` 만. (eval-scenario 등 다른 *.json 이 루트에 있어도 평가로 오인 금지 — NaN→탈락 방지)
+		entries = readdirSync(dir).filter((f) => /^eval-.*\.json$/.test(f));
 	} catch {
 		return null;
 	}

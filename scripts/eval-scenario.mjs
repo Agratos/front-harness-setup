@@ -99,6 +99,18 @@ export async function runStep(page, step) {
 		await page.waitForTimeout(250);
 		return { ok: true, kind: 'click', detail: String(step.click.text) };
 	}
+	if (step.check) {
+		const cb = page.getByRole('checkbox', { name: String(step.check.name), exact: false }).first();
+		if (!(await cb.isChecked())) await cb.click();
+		await page.waitForTimeout(200);
+		return { ok: true, kind: 'check', detail: String(step.check.name) };
+	}
+	if (step.uncheck) {
+		const cb = page.getByRole('checkbox', { name: String(step.uncheck.name), exact: false }).first();
+		if (await cb.isChecked()) await cb.click();
+		await page.waitForTimeout(200);
+		return { ok: true, kind: 'uncheck', detail: String(step.uncheck.name) };
+	}
 	// ── 단언 ──
 	if (step.assert === 'textVisible') {
 		const n = await page.getByText(String(step.text), { exact: false }).count();
@@ -115,6 +127,11 @@ export async function runStep(page, step) {
 	if (step.assert === 'inputValue') {
 		const v = await page.getByLabel(String(step.label), { exact: false }).first().inputValue();
 		return { ok: v === String(step.value), kind: 'assert.inputValue', detail: `${step.label}="${v}" (기대 "${step.value}")` };
+	}
+	if (step.assert === 'checked' || step.assert === 'unchecked') {
+		const c = await page.getByRole('checkbox', { name: String(step.name), exact: false }).first().isChecked();
+		const want = step.assert === 'checked';
+		return { ok: c === want, kind: `assert.${step.assert}`, detail: `${step.name} checked=${c} (기대 ${want})` };
 	}
 	if (step.assert === 'minCount') {
 		const n = await page.locator(String(step.selector)).count();
@@ -197,8 +214,11 @@ export async function runScenarios(opts, repoRoot) {
 			scenarios: results.map((r) => ({ name: r.name, ok: r.ok })),
 			failures,
 		};
-		mkdirSync(path.join(repoRoot, 'harness', 'evaluations'), { recursive: true });
-		writeFileSync(path.join(repoRoot, 'harness', 'evaluations', `${opts.id}-scenario.json`), JSON.stringify(out, null, 2) + '\n', 'utf8');
+		// ⚠️ 결과는 반드시 <id> **서브폴더**에 쓴다. done-gate.loadLatestEvaluation 이
+		// harness/evaluations/ 루트의 *.json 을 사전순으로 읽어 "최신 평가"로 쓰는데, 루트에
+		// `*-scenario.json` 을 두면 score 없는 이 파일이 평가로 오인돼 NaN→rework 가 된다(실측 사고).
+		mkdirSync(shotDir, { recursive: true });
+		writeFileSync(path.join(shotDir, 'scenario.json'), JSON.stringify(out, null, 2) + '\n', 'utf8');
 		log(`결과: ${out.passed ? 'PASS' : 'FAIL'} — 시나리오 ${results.length}개, 실패 단언 ${failures.length}건`);
 		for (const f of failures) log(`  ✗ [${f.scenario}] ${f.kind} — ${f.detail}`);
 		return out;
