@@ -1,0 +1,21 @@
+{
+  "_doc": "상호작용(E2E) 시나리오 스펙 예시. `node scripts/eval-scenario.mjs` 가 dev 서버+Playwright 로 실제 실행한다. 이 파일을 harness/eval-scenario.json 으로 복사해 프로젝트 유스케이스에 맞게 작성. 액션: fill/select(Mantine)/click. 단언: textVisible/textGone/inputEmpty/inputValue/minCount.",
+  "scenarios": [
+    {
+      "name": "예시: 항목 추가 → 폼 초기화 → 다른 값으로 재추가",
+      "steps": [
+        { "fill": { "label": "<입력 라벨1>", "value": "값1" } },
+        { "fill": { "label": "<입력 라벨2>", "value": "값2" } },
+        { "select": { "label": "<Select 라벨>", "value": "<옵션 텍스트>" } },
+        { "click": { "text": "추가" } },
+        { "assert": "textVisible", "text": "값1" },
+        { "assert": "inputEmpty", "label": "<입력 라벨1>" },
+        { "assert": "inputEmpty", "label": "<입력 라벨2>" },
+        { "fill": { "label": "<입력 라벨1>", "value": "값3" } },
+        { "click": { "text": "추가" } },
+        { "assert": "textVisible", "text": "값3" },
+        { "assert": "textVisible", "text": "값1" }
+      ]
+    }
+  ]
+}
