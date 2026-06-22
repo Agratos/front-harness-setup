@@ -18,6 +18,8 @@ typecheck / lint / test / check-arch (결정적 게이트)를 실행해 판정�
 - 시나리오 스펙 `harness/eval-scenario.json` 작성(decompose/페르소나에서 도출): 액션(`fill`/`select`/`click`) + **단언**(`textVisible`/`inputEmpty`/`inputValue`/`textGone`/`minCount`).
 - **반드시 포함할 단언**: 제출 후 폼 초기화(`inputEmpty`), 추가/토글/필터 후 목록·통계 반영, 상태 변경이 실제 적용되는지, 입력 검증(잘못된 값 거부).
 - 실행: `node scripts/eval-scenario.mjs --id=scen-<id>`. 실패 단언 → **기능 결함(major)** 으로 `harness/errors/`·평가에 기록 → done-gate FAIL → rework. (스펙/Playwright/서버 부재 시 skip — 차단 안 함)
+- **스토리보드**: 러너가 **각 단계마다 화면을 캡처**(`evaluations/<id>/s<scn>-<step>.png`)한다 — 클릭→실제 변화(예: 토글 후 상태)를 시각 증거로 남겨 사용자 가이드처럼 flow 전체를 확인. `<id>/scenario.json` 의 `storyboard` 참조.
+- **🧪 테스트 관리 DB 기록(Notion)**: 매 사이클 각 테스트(결정적 게이트·상호작용·평가·단위)의 통과/실패를 허브의 `🧪 테스트 관리` DB 에 행으로 적는다(유형·상태·사이클 relation·결과). *"모든 기능이 테스트됐고 통과했나"* 를 한눈에. (`docs/notion-hub-layout.md §4`)
 
 ## 입력
 

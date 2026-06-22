@@ -135,6 +135,7 @@ node scripts/loop.mjs
 - **첫 사이클(새 프로젝트)**: 📋 계획 DB 에 planSteps 행이 없으면 먼저 생성(한 행 = 한 step). `/start-project` §1b 의 허브 초기화가 안 됐으면 여기서 보강.
 - **decompose 진입**: 🔄 Cycles DB 새 행(`사이클 N — <step>`, 상태 `진행 중`, `계획` relation, `에이전트` multi_select) 생성 → 🔄 진행 상황 **top-3 불릿 재작성** + 콜아웃 상태줄(`사이클 N/M`) 갱신.
 - **evaluate/debate**: 사이클 행 `평가`(done-gate score)·`한 일` 갱신. 이슈가 있으면 🚨 이슈 트래커 행 생성 + 본문 회의(§6) 기록.
+- **verify/evaluate**: 🧪 테스트 관리 DB 에 각 테스트(결정적 게이트·상호작용/E2E·평가·단위)의 **통과/실패 행**을 사이클 relation 으로 기록(eval-scenario 스토리보드 결과 포함). "모든 기능이 테스트됐고 통과했나"의 원장(§4).
 - **merge**: 사이클 행 상태 `완료`. 배포가 있으면 🚀 배포 DB 행 + 콜아웃 '최근 배포' 갱신.
 - **값/도구 형식**: `docs/notion-hub-layout.md` §8 준수 — relation=`"[\"https://app.notion.com/p/<id>\"]"`, date=`is_datetime`=1, multi_select=JSON 문자열, 행 생성=`notion-create-pages`(parent=`data_source_id`). 허브/ds ID 는 박힌 값 신뢰 말고 **허브를 fetch 해 현재 ID** 사용.
 - ⚠️ top-3 불릿 재작성의 텍스트에는 **순수 텍스트만**(`<database>` 태그 금지 — 중복 DB 양산 방지).

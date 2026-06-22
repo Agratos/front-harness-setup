@@ -200,22 +200,31 @@ export async function runScenarios(opts, repoRoot) {
 				const page = await browser.newPage();
 				await page.goto(`http://127.0.0.1:${opts.port}/`, { waitUntil: 'load', timeout: 15_000 });
 				await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+				mkdirSync(shotDir, { recursive: true });
 				const steps = [];
 				let scenarioOk = true;
+				// 초기 상태 캡처(스토리보드 0번)
+				const initShot = `harness/evaluations/${opts.id}/s${si + 1}-00-initial.png`;
+				await page.screenshot({ path: path.join(repoRoot, initShot), fullPage: true }).catch(() => {});
+				let stepNo = 0;
 				for (const step of sc.steps ?? []) {
+					stepNo++;
 					let r;
 					try {
 						r = await runStep(page, step);
 					} catch (e) {
 						r = { ok: false, kind: 'error', detail: String(e?.message ?? e).slice(0, 200) };
 					}
+					// ⭐ 단계마다 화면 캡처 — 상태 전이 스토리보드(사용자 가이드처럼). 클릭/토글 후 실제로
+					// 펼쳐졌는지/바뀌었는지 각 상황을 시각 증거로 남긴다(단언 + 캡처 둘 다).
+					const shot = `harness/evaluations/${opts.id}/s${si + 1}-${String(stepNo).padStart(2, '0')}.png`;
+					await page.screenshot({ path: path.join(repoRoot, shot), fullPage: true }).catch(() => {});
+					r.shot = shot;
 					steps.push(r);
 					if (!r.ok) scenarioOk = false;
-					log(`  [${r.ok ? 'ok' : 'FAIL'}] ${r.kind} — ${r.detail}`);
+					log(`  [${r.ok ? 'ok' : 'FAIL'}] ${r.kind} — ${r.detail}  📷 ${path.basename(shot)}`);
 				}
-				mkdirSync(shotDir, { recursive: true });
-				await page.screenshot({ path: path.join(shotDir, `scenario-${si + 1}.png`), fullPage: true }).catch(() => {});
-				results.push({ name: sc.name, ok: scenarioOk, steps });
+				results.push({ name: sc.name, ok: scenarioOk, initialShot: initShot, steps });
 				await page.close();
 			}
 		} finally {
@@ -227,7 +236,13 @@ export async function runScenarios(opts, repoRoot) {
 			mode: 'scenario',
 			passed: failures.length === 0,
 			scenarioCount: results.length,
-			scenarios: results.map((r) => ({ name: r.name, ok: r.ok })),
+			scenarios: results.map((r) => ({
+				name: r.name,
+				ok: r.ok,
+				initialShot: r.initialShot,
+				// 스토리보드: 각 단계의 동작·단언 결과 + 그 시점 화면 캡처(사용자 가이드 flow)
+				storyboard: r.steps.map((s) => ({ kind: s.kind, detail: s.detail, ok: s.ok, shot: s.shot })),
+			})),
 			failures,
 		};
 		// ⚠️ 결과는 반드시 <id> **서브폴더**에 쓴다. done-gate.loadLatestEvaluation 이

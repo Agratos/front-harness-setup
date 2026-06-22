@@ -36,7 +36,7 @@ node scripts/init-project.mjs --use-mcp=true \
 
 > ⛔ **1b) Notion 허브 초기화 — 오케스트레이터가 무조건 수행(생략 금지).** init 의 flush 가 no-op 이므로, 접근 확인 뒤 **오케스트레이터가 커넥터(MCP)/REST 로 직접** 허브를 새 프로젝트용으로 초기화한다(`docs/notion-hub-layout.md` §7·§8). 코드·게이트만 돌리고 Notion 을 빈손으로 두지 않는다(실제 사고 사례). `useMcp=false` 또는 토큰/네트워크 부재일 때만 생략(자율 유지).
 >
-> - **비운다**: 제목 `🏢 Harness <…> Inc.` 의 `<>` 안 이름(→ 새 프로젝트명) / 상단 콜아웃(프로젝트 설명·상태줄) / 각 섹션 top-3 불릿 / 모든 DB 행(📋 계획·🔄 Cycles·🚨 이슈·🚀 배포·📝 회의록).
+> - **비운다**: 제목 `🏢 Harness <…> Inc.` 의 `<>` 안 이름(→ 새 프로젝트명) / 상단 콜아웃(프로젝트 설명·상태줄) / 각 섹션 top-3 불릿 / 모든 DB 행(📋 계획·🔄 Cycles·🚨 이슈·🚀 배포·🧪 테스트 관리·📝 회의록).
 > - **유지**: 섹션 헤더·구분선 / 인라인 DB 블록(스키마·뷰·컬럼) / 섹션 안내문 / 👥 Team Roster(레퍼런스).
 > - **도구**: 제목·콜아웃·불릿 = `notion-update-page`(또는 REST `PATCH /pages`·`PATCH /blocks/{id}`). DB 행은 **삭제 대신 archive** — 커넥터로는 행 삭제 불가하므로 REST `PATCH /pages/{rowId}` `{ "archived": true }`(행 조회는 `POST /databases/{id}/query`, `Notion-Version: 2022-06-28`) 또는 Notion UI 수동. **인라인 DB 블록 자체는 절대 삭제하지 않는다**(구조 파괴 금지 — 과거 `clearPageChildren` 버그).
 > - 페이지/DB/ds ID 는 박힌 값을 믿지 말고 **허브를 fetch 해 현재 ID** 를 얻어 쓴다.
