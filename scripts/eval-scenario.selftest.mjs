@@ -44,6 +44,7 @@ ok((await runStep(fakePage({ bySelector: { '.card': 1 } }), { assert: 'minCount'
 console.log('[2] 액션 / 알 수 없는 step');
 ok((await runStep(fakePage({ byLabel: { 제목: {} } }), { fill: { label: '제목', value: 'x' } })).ok === true, 'fill → ok');
 ok((await runStep(fakePage(), { click: { text: '추가' } })).ok === true, 'click → ok');
+ok((await runStep(fakePage(), { clickText: { text: '완료' } })).ok === true, 'clickText → ok');
 ok((await runStep(fakePage(), { assert: 'nope' })).ok === false, '알 수 없는 단언 → FAIL');
 ok((await runStep(fakePage(), { wat: 1 })).ok === false, '알 수 없는 step → FAIL');
 

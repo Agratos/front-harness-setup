@@ -111,6 +111,22 @@ export async function runStep(page, step) {
 		await page.waitForTimeout(200);
 		return { ok: true, kind: 'uncheck', detail: String(step.uncheck.name) };
 	}
+	if (step.clickText) {
+		// 텍스트로 클릭. SegmentedControl 옵션은 radio role, 탭은 tab role 로 잡히므로 우선 시도하고
+		// 없으면 일반 텍스트로 폴백. exact:true 면 정확 일치(필터 "완료" 가 "완료 1 / 전체 2"·"미완료"와 겹침 방지).
+		const txt = String(step.clickText.text);
+		const exact = step.clickText.exact === true;
+		let target = null;
+		let forced = false;
+		for (const role of ['radio', 'tab']) {
+			const loc = page.getByRole(role, { name: txt, exact });
+			if ((await loc.count()) > 0) { target = loc.first(); forced = true; break; } // radio/tab 은 숨겨진 input 일 수 있어 force 클릭
+		}
+		if (!target) target = page.getByText(txt, { exact }).first();
+		await target.click(forced ? { force: true } : {});
+		await page.waitForTimeout(200);
+		return { ok: true, kind: 'clickText', detail: `${txt}${exact ? ' (exact)' : ''}` };
+	}
 	// ── 단언 ──
 	if (step.assert === 'textVisible') {
 		const n = await page.getByText(String(step.text), { exact: false }).count();
