@@ -28,6 +28,8 @@ import { pathToFileURL } from 'node:url';
 import { teardownDevServer } from './lib/teardown.mjs';
 
 const DEFAULT_PORT = 8000;
+// 단언/액션 하나의 대기 한도. Playwright 기본 30s 는 크래시 뒤 남은 단계에서 시간을 크게 낭비한다.
+const ASSERT_TIMEOUT_MS = 5_000;
 const isWin = process.platform === 'win32';
 const log = (...a) => console.error('[scenario]', ...a);
 
@@ -198,11 +200,24 @@ export async function runScenarios(opts, repoRoot) {
 				const sc = scenarios[si];
 				log(`▶ 시나리오 ${si + 1}: ${sc.name}`);
 				const page = await browser.newPage();
+					// ⚠️ 페이지 에러 구독 — 없으면 앱이 크래시해도 러너는 "Timeout 30000ms" 만 여러 줄 뱉는다.
+					// 실측 사고: setState 업데이터 안에서 e.currentTarget 을 읽어 앱이 언마운트됐는데
+					// 원인(`Cannot read properties of null (reading 'value')`)이 어디에도 안 남아
+					// 별도 진단 스크립트를 손으로 짜야 했다. 한 줄이면 끝날 일이었다.
+					const pageErrors = [];
+					const consoleErrors = [];
+					page.on('pageerror', (err) => pageErrors.push(String(err?.message ?? err).split('\n')[0].slice(0, 300)));
+					page.on('console', (msg) => {
+						if (msg.type() === 'error') consoleErrors.push(msg.text().slice(0, 300));
+					});
+					// 단언 하나가 30s(기본)를 다 쓰면 크래시 후 남은 단계들이 분 단위로 시간을 태운다.
+					page.setDefaultTimeout(ASSERT_TIMEOUT_MS);
 				await page.goto(`http://127.0.0.1:${opts.port}/`, { waitUntil: 'load', timeout: 15_000 });
 				await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 				mkdirSync(shotDir, { recursive: true });
 				const steps = [];
 				let scenarioOk = true;
+				let crashed = null;
 				// 초기 상태 캡처(스토리보드 0번)
 				const initShot = `harness/evaluations/${opts.id}/s${si + 1}-00-initial.png`;
 				await page.screenshot({ path: path.join(repoRoot, initShot), fullPage: true }).catch(() => {});
@@ -222,9 +237,30 @@ export async function runScenarios(opts, repoRoot) {
 					r.shot = shot;
 					steps.push(r);
 					if (!r.ok) scenarioOk = false;
+					if (pageErrors.length) r.pageErrors = [...pageErrors];
 					log(`  [${r.ok ? 'ok' : 'FAIL'}] ${r.kind} — ${r.detail}  📷 ${path.basename(shot)}`);
+					if (pageErrors.length) log(`      ⚠ 페이지 에러: ${pageErrors[pageErrors.length - 1]}`);
+
+					// fail-fast: 앱이 죽었으면(런타임 에러 + #root 비어 있음) 남은 단계는 의미가 없다.
+					// 계속 돌리면 단계마다 타임아웃을 태우고, 빈 페이지라 textGone 같은 단언이
+					// **거짓 통과**한다(실측 사고). 즉시 중단하고 크래시로 명시 실패시킨다.
+					const rootChildren = await page
+						.evaluate(() => document.getElementById('root')?.childElementCount ?? -1)
+						.catch(() => -1);
+					if (pageErrors.length > 0 && rootChildren === 0) {
+						crashed = { at: stepNo, error: pageErrors[pageErrors.length - 1] };
+						scenarioOk = false;
+						steps.push({
+							ok: false,
+							kind: 'crash',
+							detail: `앱 크래시(단계 ${stepNo} 이후, #root 비어 있음): ${crashed.error}`,
+							shot,
+						});
+						log(`  [FAIL] crash — 앱 언마운트 감지, 남은 단계 중단: ${crashed.error}`);
+						break;
+					}
 				}
-				results.push({ name: sc.name, ok: scenarioOk, initialShot: initShot, steps });
+				results.push({ name: sc.name, ok: scenarioOk, initialShot: initShot, steps, crashed, pageErrors: [...pageErrors], consoleErrors: [...consoleErrors] });
 				await page.close();
 			}
 		} finally {
@@ -240,6 +276,10 @@ export async function runScenarios(opts, repoRoot) {
 				name: r.name,
 				ok: r.ok,
 				initialShot: r.initialShot,
+				// 크래시·런타임 에러를 결과에 보존한다 — 실패 원인을 사람이 다시 파헤치지 않도록.
+				crashed: r.crashed ?? null,
+				pageErrors: r.pageErrors ?? [],
+				consoleErrors: r.consoleErrors ?? [],
 				// 스토리보드: 각 단계의 동작·단언 결과 + 그 시점 화면 캡처(사용자 가이드 flow)
 				storyboard: r.steps.map((s) => ({ kind: s.kind, detail: s.detail, ok: s.ok, shot: s.shot })),
 			})),

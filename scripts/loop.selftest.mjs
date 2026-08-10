@@ -67,19 +67,21 @@ try {
 		return m ? m[1] : null;
 	}
 
-	// 1) 첫 호출 + --init 으로 1 step 시드 → status init→running, 첫 페이즈 decompose 실행
+	// 1) 첫 호출 + --init 으로 1 step 시드 → **시드만** 하고 페이즈는 전진하지 않는다.
+	//    (예전에는 시드와 동시에 decompose 를 실행해, main 미시드 상태에서 start-step 이 실패하고
+	//     step 01 이 브랜치 없이 main 에서 작업되는 사고가 났다.)
 	const first = invokeLoop(tmpDir, ['--init', '01-demo']);
 	check('첫 호출 exit 0', first.code === 0);
 	let st = readState(statePath);
 	check('상태 파일 생성됨', st !== null);
 	check('planSteps 1개 시드', Array.isArray(st.planSteps) && st.planSteps.length === 1);
-	check('첫 호출에서 decompose 실행됨', parseExecuted(first.stdout) === PHASE_ORDER[0]);
-	check('첫 호출 후 다음 페이즈 design 으로 전진', st.phase === PHASE_ORDER[1]);
+	check('--init 은 페이즈를 실행하지 않음', parseExecuted(first.stdout) === null);
+	check('--init 후 phase 는 decompose 에서 대기', st.phase === PHASE_ORDER[0]);
 	check('status running', st.status === 'running');
 
 	// 2) 호출을 반복하며 실제 실행된 페이즈를 수집 → decompose..merge 전부 한 번씩 실행되고
 	//    merge 후 다음 호출에서 status=done 으로 전이해야 함 (각 호출 = 턴 경계 시뮬레이션).
-	const executed = [parseExecuted(first.stdout)];
+	const executed = [];
 	const maxCalls = PHASE_ORDER.length + 3; // 여유분
 	let doneSeen = false;
 	for (let i = 0; i < maxCalls; i++) {
@@ -227,8 +229,11 @@ try {
 	// start-step 의 전제: main 시드
 	execFileSync('node', [path.join(tmpDirC, 'scripts', 'git-flow.mjs'), 'seed-main'], { cwd: tmpDirC, stdio: 'pipe' });
 	// loop --init → decompose 실행 → start-step 으로 step/01-gitbranch 생성·체크아웃
-	const cFirst = invokeLoop(tmpDirC, ['--init', '01-gitbranch']);
-	check('C: loop --init exit 0', cFirst.code === 0);
+	const cSeed = invokeLoop(tmpDirC, ['--init', '01-gitbranch']);
+	check('C: loop --init exit 0 (시드만)', cSeed.code === 0);
+	// --init 은 전진하지 않으므로, decompose 는 다음 호출에서 실행된다 → 그때 브랜치가 생긴다.
+	const cFirst = invokeLoop(tmpDirC);
+	check('C: 다음 호출에서 decompose 실행 exit 0', cFirst.code === 0);
 	let curBranchC = '';
 	try {
 		curBranchC = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: tmpDirC, encoding: 'utf8' }).trim();

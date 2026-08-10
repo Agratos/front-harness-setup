@@ -50,7 +50,20 @@ node scripts/init-project.mjs --use-mcp=true \
 - **제약**: 기술 스택 고정 여부, 일정, 비기능 요구(성능/접근성).
 - **평가 기준**: done-gate 임계(기본 종합 90점, major 불만 0)를 따를지.
 
-### 3) 계획 시드 (planSteps 도출)
+### 3) main 시드 (git 사용 시) — **계획 시드보다 먼저**
+
+```bash
+node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-op. useGit=false 면 자동 우회.
+```
+
+> ⚠️ **순서가 중요하다.** 예전에는 이 단계가 계획 시드 **뒤**에 있었는데, 그러면 첫 step 의
+> `start-step` 이 main 미시드 상태에서 호출돼 실패하고 **step 01 이 브랜치 없이 main 에서 작업**됐다(실측 사고).
+> 지금은 `loop --init` 이 시드만 하고 전진하지 않으며, `start-step` 실패 시 드라이버가 전진을 막는다.
+> 그래도 절차는 seed-main 을 먼저 두는 것이 맞다.
+
+> 🔧 **default 브랜치 보장**: `seed-main` 은 원격이 연결돼 있으면 **`main` 을 먼저 push** 한다 — 빈 레포에 **step 브랜치가 main 보다 먼저 push 되면 GitHub 이 그 step 을 default 브랜치로 잡는** 문제(실제 테스트에서 `step/01-…` 가 default 가 됨)를 막기 위함. 이미 default 가 잘못 잡혔으면 `gh repo edit <owner>/<repo> --default-branch main`(또는 `gh api -X PATCH repos/<owner>/<repo> -f default_branch=main`)로 교정한다.
+
+### 4) 계획 시드 (planSteps 도출)
 
 Q&A 결과를 step 목록으로 분해해 시드합니다. 각 step 은 `"<nn>-<slug>"` 형식(예: `01-login`) — 이 라벨이 `git-flow` 의 `step/<nn>-<slug>` 브랜치명으로 직결됩니다.
 
@@ -59,15 +72,7 @@ node scripts/loop.mjs --init "01-login,02-dashboard,03-settings"
 ```
 
 - `--init` 은 상태가 `init`/없을 때만 시드(기존 진행 상태는 덮어쓰지 않음).
-- ⚠️ `--init` 은 시드와 동시에 **첫 페이즈(decompose)를 자동 전진**시킨다(`step/01-…` 브랜치 생성 + `design` 진입). 그래서 `/run-cycle` 첫 진입 시 step 1 은 이미 `design` 이다 — **decompose 산출물(step 분해 기록 `decisions/<id>.md`)은 첫 `/run-cycle` 에서 보강**하라.
-
-### 4) 조건부 main 시드 (git 사용 시에만)
-
-```bash
-node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-op. useGit=false 면 자동 우회.
-```
-
-> 🔧 **default 브랜치 보장**: `seed-main` 은 원격이 연결돼 있으면 **`main` 을 먼저 push** 한다 — 빈 레포에 **step 브랜치가 main 보다 먼저 push 되면 GitHub 이 그 step 을 default 브랜치로 잡는** 문제(실제 테스트에서 `step/01-…` 가 default 가 됨)를 막기 위함. 이미 default 가 잘못 잡혔으면 `gh repo edit <owner>/<repo> --default-branch main`(또는 `gh api -X PATCH repos/<owner>/<repo> -f default_branch=main`)로 교정한다.
+- ✅ `--init` 은 **시드만** 하고 페이즈를 전진시키지 않는다. 첫 `/run-cycle` 호출이 `decompose` 부터 정상 진행한다.
 
 ## 실행 요약
 
@@ -78,10 +83,10 @@ node scripts/init-project.mjs --use-mcp=true --git-remote=<url> --notion-url=<ur
 #    → init 은 git/Notion 접근 확인만. (Notion 대시보드 비우기는 no-op)
 # 1b) ⛔ Notion 허브 초기화 — 오케스트레이터가 커넥터/REST 로 직접 수행(무조건, §1b)
 # 2) deep-interview Q&A (필수·무조건) → planSteps 확정
-# 3) 계획 시드
-node scripts/loop.mjs --init "01-login,02-dashboard"
-# 4) git 사용 시 main 시드
+# 3) git 사용 시 main 시드 — ⚠️ 계획 시드보다 **먼저**
 node scripts/git-flow.mjs seed-main
+# 4) 계획 시드 (시드만 함 — 페이즈 전진은 /run-cycle 부터)
+node scripts/loop.mjs --init "01-login,02-dashboard"
 ```
 
 ## 다음 단계
