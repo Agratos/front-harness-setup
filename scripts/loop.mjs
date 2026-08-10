@@ -15,15 +15,18 @@
 //       harness/cycles/ 에 사이클 로그 1줄 append 후 다음 페이즈로 전진.
 //
 // 멱등 재개(idempotent resume):
-//   needsRerun(state) 가 true(=committed=false 인데 phase 가 done 표시) 면
-//   건너뛰지 않고 현재 페이즈를 다시 실행합니다.
+//   needsRerun(state)(손으로 주입된 크래시 상태) 또는 wasInterrupted(state)(이 phaseSeq 를
+//   이미 착수했는데 전진 기록이 없음) 가 true 면 건너뛰지 않고 현재 페이즈를 다시 실행합니다.
+//   후자를 위해 페이즈 실행 **직전**에 lastExecutedPhaseSeq 를 원자적으로 남깁니다 —
+//   그 앵커가 없던 동안 RERUN 은 실제 운영에서 한 번도 발화하지 않았습니다(2차 자기진단 F21).
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, writeState } from './lib/state.mjs';
+import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, wasInterrupted, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
+import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
 import { logError } from './lib/log.mjs';
 
 // step 당 페이즈 순서. merge 다음은 (다음 step 의) decompose 로 래핑한다.
@@ -40,6 +43,12 @@ export const MAX_ESCALATION = 3;
 
 // loop.mjs 가 직접 결정적으로 실행하는 페이즈
 const DETERMINISTIC_PHASES = new Set(['verify', 'merge']);
+// 에이전트 페이즈이지만 **산출물 생성은 코드가 강제**하는 페이즈.
+// evaluate 는 에이전트가 캡처물을 보고 판단하는 페이즈지만, 그 캡처물·점수를 만드는 일은
+// 기계적이다. 예전에는 그 실행이 md 지시(run-cycle.md)에만 있어서 `eval-playwright.mjs` 의
+// **호출자가 0건**이었고, 평가 없이 debate→merge 로 흘러가 done-gate 에서 "평가 없음" 으로
+// 탈락한 뒤 3회 왕복 끝에 blocked 로 끝났다(2차 자기진단 F17). verify 의 E2E 강제와 대칭을 맞춘다.
+const CODE_ENFORCED_AGENT_PHASES = new Set(['evaluate']);
 // 에이전트 주도(=/run-cycle 커맨드가 담당) 페이즈.
 // 'vote' 는 PHASE_ORDER 의 선형 시퀀스에는 없고, debate 의 rework 판정이 MAX_REWORK 를
 // 초과할 때만 진입하는 분기 페이즈다(투표 내용·다수결·CEO 캐스팅보트는 에이전트가 수행).
@@ -114,7 +123,10 @@ export function nextTransition(phase, currentStepIdx, stepCount) {
  *   1) 명시 주입 — opts.debateOutcome 또는 env HARNESS_DEBATE_OUTCOME ('pass'|'rework'|'fail').
  *      (CI/테스트/오케스트레이터가 평가 결과를 직접 전달하는 경로)
  *   2) 최신 평가 파일 + 히스테리시스 임계(done-gate 와 동일 규칙)로 pass/rework 판정.
- *   3) 평가 데이터가 없으면(스켈레톤/데모) 'pass' — 자율 흐름을 막지 않는다.
+ *   3) 이번 사이클의 평가가 없으면 — **평가 도구가 있는데도 없으면 'rework'**, 도구 자체가 없으면 'pass'.
+ *      (예전에는 무조건 'pass' 였다. "증거 없음"을 통과로 읽는 기본값이 '가짜 통과 0' 원칙과
+ *       어긋났고, merge 의 done-gate 가 뒤늦게 탈락시켜 3회 왕복만 낭비했다 — 2차 자기진단 F20.
+ *       도구 부재(스켈레톤/셀프테스트)는 환경 문제이므로 자율 흐름을 막지 않는다.)
  * @param {object} state
  * @param {string} repoRoot
  * @param {{debateOutcome?:string}} [opts]
@@ -124,6 +136,14 @@ export function resolveDebateOutcome(state, repoRoot, opts = {}) {
 	const injected = opts.debateOutcome ?? process.env.HARNESS_DEBATE_OUTCOME;
 	if (injected === 'rework' || injected === 'fail') return 'rework';
 	if (injected === 'pass') return 'pass';
+	/** 이번 사이클 평가가 없을 때의 기본값 — 산출물 부재는 rework, 환경(도구) 부재는 pass. */
+	const noEvidenceOutcome = () => {
+		if (existsSync(path.join(repoRoot, 'scripts', 'eval-playwright.mjs'))) {
+			log('debate: 이번 사이클의 평가 증거가 없음 → rework (평가 도구는 있으므로 산출물 부재로 판단)');
+			return 'rework';
+		}
+		return 'pass'; // 평가 도구 자체가 없는 환경(스켈레톤/셀프테스트) — 자율 흐름 유지
+	};
 	try {
 		const evaluation = loadLatestEvaluation(repoRoot);
 		if (evaluation) {
@@ -136,8 +156,10 @@ export function resolveDebateOutcome(state, repoRoot, opts = {}) {
 			const want = cycleIdOf(state);
 			if (evaluation.cycleId && evaluation.cycleId !== want) {
 				log(`debate: 평가 ${evaluation.id} 은 다른 사이클(${evaluation.cycleId} ≠ ${want}) — 판정 근거에서 제외`);
+				return noEvidenceOutcome();
 			} else if (!evaluation.cycleId) {
 				log(`debate: 평가 ${evaluation.id} 에 cycleId 스탬프 없음(구 형식) — 판정 근거에서 제외`);
+				return noEvidenceOutcome();
 			} else {
 				const stepId = `step-${state.currentStepIdx ?? 0}`;
 				const wasLatched = !!(state?.scores?.[stepId]?.latched);
@@ -145,9 +167,9 @@ export function resolveDebateOutcome(state, repoRoot, opts = {}) {
 			}
 		}
 	} catch {
-		// 평가 로드 실패 → 자율 유지 위해 pass 처리
+		// 평가 로드 실패 → 아래 기본값 규칙으로 판정
 	}
-	return 'pass';
+	return noEvidenceOutcome();
 }
 
 /**
@@ -196,12 +218,41 @@ export function computeTransition({ phase, currentStepIdx, stepCount, reworkCoun
  *   - typecheck/lint/test 실패 = 코드가 계약을 못 지킴 → **구현결함**
  *   - merge 인데 결정적 게이트는 green = 남은 실패 원인은 평가 임계·stale 평가 → **검증결함**
  *
- * @param {string} phase 실패한 페이즈 ('verify' | 'merge')
+ * @param {string} phase 실패한 페이즈 ('verify' | 'merge' | 'evaluate')
  * @param {{passed?:boolean, gates?:Array<{name:string, ok:boolean}>}|null} gateStatus
+ * @param {{e2e?:'assert'|'unverifiable', unverifiable?:string, evaluate?:string}} [detail] 세부 원인(옵션)
  * @returns {{kind:'설계결함'|'구현결함'|'검증결함', nextPhase:string, why:string}}
  */
-export function classifyFailure(phase, gateStatus) {
+export function classifyFailure(phase, gateStatus, detail = {}) {
 	const failedGates = (gateStatus?.gates ?? []).filter((g) => !g.ok).map((g) => g.name);
+
+	// evaluate 페이즈가 이번 사이클의 평가 산출물을 만들지 못함 = 검증 수단의 결함.
+	if (phase === 'evaluate') {
+		return {
+			kind: '검증결함',
+			nextPhase: 'evaluate',
+			why: `평가 산출물을 생성하지 못함(${detail.evaluate ?? '원인 미상'}) — 평가 자체를 다시 수행해야 함`,
+		};
+	}
+
+	// 상호작용 검증이 **불가능한** 경우: 단언이 틀린 게 아니라 검증할 수단·대상이 없다.
+	// 스펙(수용기준) 부재는 설계 산출물의 결함이므로 design 으로, dev 서버 미기동은 구현결함이다.
+	// (design → implement → verify 로 되돌아오므로 E2E 는 반드시 다시 실행된다.)
+	if (detail.e2e === 'unverifiable') {
+		const specProblem = ['no-spec', 'bad-spec', 'empty-spec'].includes(detail.unverifiable);
+		if (specProblem) {
+			return {
+				kind: '설계결함',
+				nextPhase: 'design',
+				why: `상호작용 검증 스펙(수용기준) 부재/손상(${detail.unverifiable}) — AC 를 액션+단언으로 정의해야 함`,
+			};
+		}
+		return {
+			kind: '구현결함',
+			nextPhase: 'implement',
+			why: `상호작용 검증 불가(${detail.unverifiable ?? 'unknown'}) — 앱이 기동하지 않아 조작할 수 없음`,
+		};
+	}
 
 	// merge 인데 결정적 게이트가 통과 상태였다면, 남은 탈락 사유는 평가(임계/stale) 뿐이다.
 	if (phase === 'merge' && gateStatus && gateStatus.passed === true) {
@@ -265,6 +316,26 @@ export function computeFailureRouting({ phase, failCount, escalations = 0, class
 	return { action: 'escalate', nextPhase: classification?.nextPhase ?? 'implement', nextEscalations };
 }
 
+/**
+ * 이번 사이클의 상호작용 검증 산출물 id (`scen-step-<idx>-r<rework>`).
+ * eval-scenario 가 `harness/evaluations/<id>/scenario.json` 을 쓰고, 평가(eval-playwright)의
+ * `fn.e2e-verified` 항목이 같은 규칙으로 그 파일을 찾는다 — 두 곳이 어긋나면 안 되므로 한 곳에서 만든다.
+ * @param {object|null} state
+ * @returns {string}
+ */
+export function scenarioIdOf(state) {
+	return `scen-${cycleIdOf(state).replace('#', '-r')}`;
+}
+
+/** eval-scenario 가 남긴 결과 산출물 읽기 (없으면 null). */
+export function readScenarioOutcome(repoRoot, scenId) {
+	try {
+		return JSON.parse(readFileSync(path.join(repoRoot, 'harness', 'evaluations', scenId, 'scenario.json'), 'utf8'));
+	} catch {
+		return null;
+	}
+}
+
 /** node 자식 프로세스 실행 → {code} (출력 상속) */
 function runNode(args, repoRoot) {
 	try {
@@ -300,12 +371,31 @@ function runDeterministicPhase(phase, state, repoRoot) {
 		// 스펙/Playwright/서버 부재 시 eval-scenario 는 스스로 exit 0(skip) 하므로 자율 흐름은 막지 않는다.
 		const scen = path.join(repoRoot, 'scripts', 'eval-scenario.mjs');
 		if (!existsSync(scen)) return { ok: true, note: `done-gate ok / eval-scenario.mjs 없음 → 상호작용 검증 생략` };
-		const scenId = `scen-${cycleIdOf(state).replace('#', '-r')}`;
+		const scenId = scenarioIdOf(state);
 		const s = runNode([scen, `--id=${scenId}`], repoRoot);
-		if (s.code !== 0) {
-			return { ok: false, note: `done-gate ok / eval-scenario(${scenId}) exit ${s.code} — 상호작용 단언 실패(기능 결함)` };
+		// exit 2 = 검증 불가(스펙 없음·깨짐·빈 스펙·서버 미기동). exit 1 = 단언 실패.
+		// 예전에는 이 모든 경우가 exit 0 이라, 스펙을 만들지 않으면 E2E 강제가 **아무 것도 검사하지
+		// 않고 통과**했다(2차 자기진단 F15·F16 실측). 지금은 둘 다 전진을 막고, 되돌릴 역할만 다르다.
+		if (s.code === EXIT_UNVERIFIABLE) {
+			const outcome = readScenarioOutcome(repoRoot, scenId);
+			const why = outcome?.reason ?? `exit ${EXIT_UNVERIFIABLE}`;
+			return {
+				ok: false,
+				e2e: 'unverifiable',
+				unverifiable: outcome?.unverifiable ?? 'unknown',
+				note: `done-gate ok / eval-scenario(${scenId}) 검증 불가 — ${why}`,
+			};
 		}
-		return { ok: true, note: `done-gate --deterministic-only ok + eval-scenario(${scenId}) ok` };
+		if (s.code !== 0) {
+			return {
+				ok: false,
+				e2e: 'assert',
+				note: `done-gate ok / eval-scenario(${scenId}) exit ${s.code} — 상호작용 단언 실패(기능 결함)`,
+			};
+		}
+		const outcome = readScenarioOutcome(repoRoot, scenId);
+		const suffix = outcome?.exempt ? ` (면제: ${outcome.reason})` : outcome?.envSkip ? ` (환경 부재: ${outcome.envSkip})` : '';
+		return { ok: true, note: `done-gate --deterministic-only ok + eval-scenario(${scenId}) ok${suffix}` };
 	}
 	if (phase === 'merge') {
 		const gitFlow = path.join(repoRoot, 'scripts', 'git-flow.mjs');
@@ -321,6 +411,50 @@ function runDeterministicPhase(phase, state, repoRoot) {
 }
 
 /**
+ * evaluate 페이즈의 **산출물 생성**을 코드로 강제한다.
+ *
+ * 왜 코드로 옮겼나: `eval-playwright.mjs` 는 호출자가 **0건**이었다(주석에만 등장).
+ * run-cycle.md 에 "⛔ 무조건" 이라고 적혀 있었지만 아무 스크립트도 부르지 않아서,
+ * 평가를 건너뛴 채 debate→merge 로 흘러가 done-gate 가 "평가 데이터 없음" 으로 탈락시키고
+ * 3회 왕복 끝에 blocked 로 끝났다(2차 자기진단 F17). verify 의 E2E 강제와 같은 처방이다.
+ *
+ * eval-playwright 는 설계상 항상 exit 0 이므로(평가 실패가 루프를 멈추지 않게), **exit code 를
+ * 믿지 않고 산출물을 검사한다** — 이번 사이클(cycleId)의 평가가 실제로 생겼는지 본다.
+ * 판단(캡처물을 보고 점수를 조정하는 일)은 여전히 에이전트 몫이다. 여기서 강제하는 것은
+ * "판단의 재료가 존재한다" 는 사실뿐이다.
+ *
+ * @returns {{ok:boolean, note:string, evaluate?:string}}
+ */
+function runEvaluatePhase(state, repoRoot) {
+	const evalScript = path.join(repoRoot, 'scripts', 'eval-playwright.mjs');
+	// 도구 부재(스켈레톤/셀프테스트 임시 cwd)는 환경 문제 — 자율 흐름을 막지 않는다.
+	if (!existsSync(evalScript)) {
+		return { ok: true, note: 'eval-playwright.mjs 없음 → 평가 산출물 생성 생략(환경 부재)' };
+	}
+	const want = cycleIdOf(state);
+	const r = runNode([evalScript], repoRoot);
+	const latest = loadLatestEvaluation(repoRoot);
+	if (!latest) {
+		return {
+			ok: false,
+			evaluate: 'no-artifact',
+			note: `eval-playwright exit ${r.code} — 평가 산출물(harness/evaluations/eval-*.json)이 생성되지 않음`,
+		};
+	}
+	if (latest.cycleId !== want) {
+		return {
+			ok: false,
+			evaluate: 'stale-artifact',
+			note: `eval-playwright exit ${r.code} — 최신 평가 ${latest.id} 의 cycleId=${latest.cycleId} ≠ 이번 사이클 ${want}`,
+		};
+	}
+	return {
+		ok: true,
+		note: `eval-playwright ok — ${latest.id} (score=${latest.score} major=${latest.majorComplaints} cycle=${latest.cycleId})`,
+	};
+}
+
+/**
  * 한 번의 invocation = 현재 페이즈 1개 실행 후 전진. 상태를 원자적으로 기록한다.
  * @param {object} params
  * @param {string} params.repoRoot
@@ -328,7 +462,7 @@ function runDeterministicPhase(phase, state, repoRoot) {
  * @param {string} [params.debateOutcome] debate 결과 주입('pass'|'rework'|'fail'). 미지정 시 평가 파일로 판정.
  * @returns {{state:object, executedPhase:string, rerun:boolean, note:string, done:boolean}}
  */
-export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutcomeOpt, resume = false } = {}) {
+export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutcomeOpt, resume = false, force = false } = {}) {
 	const statePath = stateFilePath(repoRoot);
 	let state = readState(statePath);
 
@@ -381,9 +515,25 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 				done: false,
 			};
 		}
+		// 조치 증거 확인 — blocked 시점 이후 저장소에 변화가 있어야 재개를 허용한다.
+		// (증거 없이 재개하면 같은 실패를 반복할 뿐이고, 항복 조건 자체가 무의미해진다.)
+		const now = repoFingerprint(repoRoot);
+		const before = state.blockedAt ?? null;
+		if (!force && before && now && before === now) {
+			const note =
+				`--resume 거부: blocked 이후 저장소에 변경이 없습니다(커밋·작업트리 동일). ` +
+				`원인을 조치한 뒤 다시 시도하세요 — 사유: ${state.blockedReason ?? '미기록'} / 상세: harness/errors/ 최신 항목. ` +
+				`(의도적 재개는 --resume --force)`;
+			log(note);
+			return { state, executedPhase: null, rerun: false, note, done: false };
+		}
 		// 재개: 실패 카운터·에스컬레이션을 리셋하고 running 으로 되돌린다.
-		state = { ...state, status: 'running', blockedReason: null, failures: {}, escalations: 0, committed: false };
-		log('--resume: blocked 해제, 실패 카운터·에스컬레이션 초기화');
+		state = { ...state, status: 'running', blockedReason: null, blockedAt: null, failures: {}, escalations: 0, committed: false };
+		log(
+			force
+				? '--resume --force: 증거 확인 없이 blocked 해제 (실패 카운터·에스컬레이션 초기화)'
+				: '--resume: 조치 확인됨 → blocked 해제, 실패 카운터·에스컬레이션 초기화',
+		);
 	}
 
 	// status=init → running 으로 전이하며 첫 페이즈(decompose) 진입
@@ -391,11 +541,24 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 		state = { ...state, status: 'running', phase: PHASE_ORDER[0], phaseSeq: (state.phaseSeq ?? 0) + 1, committed: false };
 	}
 
-	// 멱등 재개: committed=false 인데 done 표시 상태면 현재 페이즈 재실행 (advance 안 함)
-	const rerun = needsRerun(state);
+	// 멱등 재개 판정.
+	//
+	// needsRerun 은 "status=done 또는 step 소진 + 미커밋" 이라는 **손으로 주입한 크래시 상태**만
+	// 잡는다. 그 두 조건은 드라이버 자신의 전이로는 도달할 수 없어서(nextTransition 이 idx 를
+	// planSteps.length 까지 올리지 않고, status=done 은 더 앞에서 조기 return 된다),
+	// 실제 운영 중에는 RERUN 이 한 번도 표시되지 않았다(2차 자기진단 F21).
+	//
+	// wasInterrupted 가 그 구멍을 메운다: 페이즈를 **실행하기 직전**에 lastExecutedPhaseSeq 를
+	// 남겨두므로, 실행 도중 크래시해 전진 기록(advancePhase)이 남지 않으면 다음 호출에서
+	// "이 phaseSeq 는 이미 착수했는데 커밋되지 않았다" 를 알 수 있다.
+	const rerun = needsRerun(state) || wasInterrupted(state);
 
 	const phase = state.phase;
 	let note;
+
+	// 실행 착수 표시 — 원자적으로 먼저 남긴다(크래시 감지 앵커).
+	state = { ...state, lastExecutedPhaseSeq: state.phaseSeq ?? 0 };
+	writeState(statePath, state);
 
 	// debate 페이즈면 평가 결과(pass/rework)를 먼저 결정한다 — 전이 분기와 로그에 함께 사용.
 	const debateOutcome = phase === 'debate' ? resolveDebateOutcome(state, repoRoot, { debateOutcome: debateOutcomeOpt }) : 'pass';
@@ -423,12 +586,40 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 		note = `결정적 페이즈 '${phase}': ${r.note}`;
 		log(note);
 		if (!r.ok) {
-			const routed = handleDeterministicFailure({ state, phase, detail: r.note, repoRoot, statePath, rerun });
+			const routed = handleDeterministicFailure({
+				state,
+				phase,
+				detail: r.note,
+				repoRoot,
+				statePath,
+				rerun,
+				cause: { e2e: r.e2e, unverifiable: r.unverifiable },
+			});
 			return routed;
 		}
 		// 성공 → 이 페이즈의 연속 실패 카운터를 리셋한다.
 		state = { ...state, failures: { ...(state.failures ?? {}), [phase]: 0 } };
 	} else if (AGENT_PHASES.has(phase)) {
+		// 산출물 생성이 기계적인 에이전트 페이즈는 코드가 먼저 실행해 재료를 확보한다.
+		let enforcedNote = '';
+		if (CODE_ENFORCED_AGENT_PHASES.has(phase)) {
+			const e = runEvaluatePhase(state, repoRoot);
+			log(`페이즈 '${phase}' 산출물 강제: ${e.note}`);
+			if (!e.ok) {
+				return handleDeterministicFailure({
+					state,
+					phase,
+					detail: e.note,
+					repoRoot,
+					statePath,
+					rerun,
+					cause: { evaluate: e.evaluate },
+				});
+			}
+			// 성공 → 이 페이즈의 연속 실패 카운터를 리셋한다.
+			state = { ...state, failures: { ...(state.failures ?? {}), [phase]: 0 } };
+			enforcedNote = ` | 산출물: ${e.note}`;
+		}
 		if (phase === 'debate') {
 			note = `PHASE debate (outcome=${debateOutcome}, rework=${state.reworkCount ?? 0}/${MAX_REWORK}) requires agent work via /run-cycle`;
 		} else if (phase === 'vote') {
@@ -436,6 +627,7 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 		} else {
 			note = `PHASE ${phase} requires agent work via /run-cycle`;
 		}
+		note += enforcedNote;
 		log(note);
 		appendCycleLog(repoRoot, cycleEntry(state, phase, 'agent-required', note));
 	} else {
@@ -489,13 +681,13 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
  * 결정적 페이즈 실패를 분류·라우팅하고 상태를 기록한다 (I/O 담당 — 판정은 순수 함수에 위임).
  * @returns {{state:object, executedPhase:string, rerun:boolean, note:string, done:boolean}}
  */
-function handleDeterministicFailure({ state, phase, detail, repoRoot, statePath, rerun }) {
+function handleDeterministicFailure({ state, phase, detail, repoRoot, statePath, rerun, cause = {} }) {
 	const failures = { ...(state.failures ?? {}) };
 	const failCount = (failures[phase] ?? 0) + 1;
 	failures[phase] = failCount;
 
 	const gateStatus = readGateStatus(repoRoot, cycleIdOf(state));
-	const classification = classifyFailure(phase, gateStatus);
+	const classification = classifyFailure(phase, gateStatus, cause);
 	const routing = computeFailureRouting({
 		phase,
 		failCount,
@@ -531,9 +723,18 @@ function handleDeterministicFailure({ state, phase, detail, repoRoot, statePath,
 		return { state: next, executedPhase: phase, rerun, note, done: false };
 	}
 
-	// blocked — 항복. 이유를 남기고 멈춘다 (사람 호출).
+	// blocked — 항복. 이유 + **그 시점의 저장소 지문**을 남기고 멈춘다 (사람 호출).
+	// 지문은 --resume 이 "조치 없이 재개" 인지 판정하는 근거다 (F23).
 	const reason = `${head} — 되돌림 ${MAX_ESCALATION}회를 모두 소진해 자동 복구 실패`;
-	const next = { ...state, failures, escalations: routing.nextEscalations, status: 'blocked', blockedReason: reason, committed: false };
+	const next = {
+		...state,
+		failures,
+		escalations: routing.nextEscalations,
+		status: 'blocked',
+		blockedReason: reason,
+		blockedAt: repoFingerprint(repoRoot),
+		committed: false,
+	};
 	appendCycleLog(repoRoot, cycleEntry(state, phase, 'blocked', `${detail} | ${reason}`));
 	try {
 		logError(repoRoot, {
@@ -566,6 +767,34 @@ function startStepBranch(state, repoRoot) {
 	log(`step 브랜치 준비: git-flow start-step ${nn} ${slug} (exit ${r.code})`);
 	// skipGitFlow(=useGit=false) 면 git-flow 가 스스로 no-op 으로 exit 0 하므로 여기서 true 가 된다.
 	return r.code === 0;
+}
+
+/**
+ * 저장소 지문 — "blocked 이후 무엇이든 달라졌는가" 를 판정하는 값싼 근거.
+ *
+ * 왜 필요한가: `--resume` 이 failures·escalations 를 **무조건** 초기화해서,
+ * MAX_ESCALATION(3) 이라는 마지막 방어선이 `--resume` 한 줄로 무력화됐다(2차 자기진단 F23).
+ * 자율 오케스트레이터에게는 그게 가장 값싼 탈출구이므로, 사실상 무한 재시도가 가능했다.
+ * 이제 blocked 시점의 지문을 남기고, 재개할 때 **달라진 것이 있는지** 확인한다.
+ *
+ * 한계: 같은 파일 안의 수정은 shortstat 이 같으면 구분하지 못한다. 완벽한 증거가 아니라
+ * "아무것도 안 하고 재개" 를 막는 최소 관문이다. 의도적 재개는 `--resume --force`.
+ *
+ * @returns {string|null} git 을 쓸 수 없으면 null
+ */
+function repoFingerprint(repoRoot) {
+	const run = (args) => {
+		try {
+			return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' }).trim();
+		} catch {
+			return null;
+		}
+	};
+	const head = run(['rev-parse', 'HEAD']);
+	if (head === null) return null; // git 저장소가 아니거나 커밋 없음 → 지문 없음
+	const shortstat = run(['diff', 'HEAD', '--shortstat']) ?? '';
+	const porcelain = run(['status', '--porcelain']) ?? '';
+	return `${head}|${shortstat}|${porcelain}`;
 }
 
 /** cycles 로그 엔트리 구성 (결정적 — Date 대신 phaseSeq/checkpointToken 사용) */
@@ -618,8 +847,9 @@ function main() {
 	const initSteps = parseInit(argv);
 	const debateOutcome = parseDebate(argv);
 	const resume = argv.includes('--resume');
+	const force = argv.includes('--force');
 
-	const { state, executedPhase, rerun, note, done } = runOnce({ repoRoot, initSteps, debateOutcome, resume });
+	const { state, executedPhase, rerun, note, done } = runOnce({ repoRoot, initSteps, debateOutcome, resume, force });
 
 	const failNow = (state.failures ?? {})[state.phase] ?? 0;
 	console.log('=== loop (1 phase / invocation) ===');
@@ -637,7 +867,7 @@ function main() {
 		console.log('*** BLOCKED — 자동 복구 실패. 아래를 확인한 뒤 재개하세요 ***');
 		console.log(`  사유: ${state.blockedReason ?? '(미기록)'}`);
 		console.log('  상세: harness/errors/ 최신 항목');
-		console.log('  재개: node scripts/loop.mjs --resume');
+		console.log('  재개: node scripts/loop.mjs --resume   (조치로 저장소가 바뀌어야 허용 / 강제는 --resume --force)');
 	}
 
 	// blocked 는 비정상 종료로 알린다 — 스크립트/오케스트레이터가 조용히 지나치지 않도록.

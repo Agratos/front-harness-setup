@@ -192,3 +192,25 @@ phase: verify   failures: verify=1/3   escalations: 0/3
 1. **F1 페이즈 산출물 게이트** — 아직 에이전트 페이즈(design/implement/evaluate/debate)는 산출물 없이 전진한다.
 2. **F3 루브릭** — 여전히 빈 스캐폴드에 100점을 준다. `verdict.json` + 수용기준 차원 필요.
 3. **F5 `plan.json`** — 요구사항→AC→E2E 추적성이 없어 "AC 4/4" 를 사람이 세고 있다.
+
+> ⚠️ **시행 4의 성공에는 조건이 있었다** — 2차 자기진단([`../review/self-audit-2026-08-10.md`](../review/self-audit-2026-08-10.md))에서
+> 실측한 대로, `harness/eval-scenario.json` 스펙이 **없으면** verify 의 E2E 는 exit 0 으로 조용히 통과한다(F15).
+> 시행 4는 스펙이 이미 있었기 때문에 잡은 것이다. 새 프로젝트는 스펙이 없는 상태로 태어나므로,
+> **시행 5는 스펙 삭제·Playwright 제거·evaluate 생략을 일부러 넣은 방어 실험**으로 설계한다.
+
+## 시행 5 (예정) — fail-open 방어 실험
+
+수정 전 하네스는 아래 5경로 전부를 통과시켰다. **수정 후(v3 1.5단계, `step/27-fail-open-reversal`)**
+기대값이 뒤집혔으므로, 시행 5는 "예측대로 차단되는가" 를 실측한다.
+
+| 실험 | 조작 | 수정 전 | 수정 후 기대 | 코드 근거 |
+| --- | --- | --- | --- | --- |
+| E-1 (F15) | `harness/eval-scenario.json` 없이 버그 있는 앱으로 verify | **통과해버림** | exit 2 → 차단 (설계결함→`design`) | `eval-scenario.mjs` no-spec |
+| E-2 (F16) | dev 서버가 뜨지 않도록 만든 뒤 verify | **통과해버림** | exit 2 → 차단 (구현결함→`implement`) | `eval-scenario.mjs` server-not-ready |
+| E-3 (F19) | Playwright 미설치 상태로 evaluate | **92점 PASS** | **32점 FAIL** | `rubric.mjs` 미관찰 감점 |
+| E-4 (F17) | evaluate 를 아무도 실행하지 않은 채 merge 까지 호출 | 3회 왕복 후 **blocked** | loop 가 스스로 실행 + 산출물 검사 | `loop.mjs` `runEvaluatePhase` |
+| E-5 (F18) | 기능 0개 빈 스캐폴드로 평가 | **100점 PASS** | major 불만 → FAIL | `rubric.mjs` `fn.e2e-verified` |
+
+E-3·E-5 는 이미 셀프테스트에서 결정적으로 확인됐다(`eval.selftest` [B2]).
+E-1·E-2·E-4 는 스텁 기반 통합 케이스로 확인됐다(`loop.selftest` 시나리오 G).
+**시행 5의 목적은 실제 앱·실제 브라우저에서도 같은지** 보는 것이다 — 스텁이 아니라 현장에서.

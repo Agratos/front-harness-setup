@@ -62,11 +62,21 @@
 
 ### 2.3 기능 (차원 가중치 0.35)
 
-| 항목 ID               | 체크리스트 질문                                                                          | 배점 | 실패 시 심각도 |
-| --------------------- | ---------------------------------------------------------------------------------------- | ---- | -------------- |
-| `fn.app-mounts`       | React 앱이 `#root` 에 마운트되는가                                                       | 40   | **major**      |
-| `fn.no-runtime-error` | 페이지 로드 중 처리되지 않은 런타임 예외가 없는가                                        | 40   | **major**      |
-| `fn.navigable`        | 첫 내부 링크 클릭(내비게이션) 후에도 앱이 살아있는가(관찰 기반, 단일 페이지면 기본 통과) | 20   | minor          |
+| 항목 ID               | 체크리스트 질문                                                                       | 배점 | 실패 시 심각도 |
+| --------------------- | ------------------------------------------------------------------------------------- | ---- | -------------- |
+| `fn.app-mounts`       | React 앱이 `#root` 에 마운트되는가                                                    | 30   | **major**      |
+| `fn.no-runtime-error` | 페이지 로드 중 처리되지 않은 런타임 예외가 없는가                                     | 30   | **major**      |
+| `fn.e2e-verified`     | **이번 사이클의 상호작용(E2E) 단언이 모두 통과했는가** (`eval-scenario` 산출물)        | 30   | **major**      |
+| `fn.navigable`        | 첫 내부 링크 클릭(내비게이션) 후에도 앱이 살아있는가                                  | 10   | minor          |
+
+> `fn.e2e-verified` 는 **"떴는가"가 아니라 "조작했을 때 기대대로 됐는가"** 를 본다.
+> 이 항목이 없던 동안 루브릭의 모든 항목이 "렌더/에러/게이트" 였고, 그래서 **기능 0개 빈 스캐폴드가
+> 종합 100점 / major 0** 을 받았다(실측). 입력은 verify 페이즈가 남긴
+> `harness/evaluations/scen-step-<idx>-r<rework>/scenario.json` 의 `passed` 이며,
+> **파일이 없으면 미관찰 → major 불만**이다(= verify 를 먼저 통과해야 평가가 성립한다).
+>
+> 근본 해결(요구사항→AC→E2E 추적성)은 `plan.json`(로드맵 3단계)이 필요하다. 이 항목은
+> 그 전에도 "상호작용이 실제로 검증됐다"는 사실이 점수에 반영되게 하는 최소 장치다.
 
 ### 2.4 품질 (차원 가중치 0.20)
 
@@ -118,8 +128,8 @@
 		"fn": { "score": 100, "weight": 0.35 },
 		"quality": { "score": 100, "weight": 0.2 }
 	},
-	"complaints": [{ "dimension": "ui", "item": "ui.heading", "severity": "major", "detail": "..." }],
-	"observations": { "title": "harness-setup", "headingPresent": true, "consoleErrors": 0 },
+	"complaints": [{ "dimension": "ui", "item": "ui.heading", "severity": "major", "reason": "failed" }],
+	"observations": { "headingPresent": true, "consoleErrors": 0, "appMounted": true, "e2ePassed": true },
 	"screenshot": "harness/evaluations/eval-0001/screenshot.png"
 }
 ```
@@ -138,8 +148,9 @@
 `scripts/eval-playwright.mjs` 는 다음 순서로 채점합니다.
 
 1. **관찰(observations) 수집**: Playwright 가 있으면 실측(title/heading/console/마운트 + landmark/a11y 위반 수/모바일 폭 overflow/실제 링크 클릭 내비게이션),
-   없으면 정적 폴백 관찰값(index.html 파싱 등; 미관찰 항목은 기본 통과 처리).
+   없으면 정적 폴백 관찰값(index.html 파싱으로 알 수 있는 것만; **나머지는 `null`= 미관찰**).
 2. **체크리스트 평가**: 각 항목을 관찰값으로 pass/fail 판정 → 실패는 불만으로 수집.
+   불만에는 `reason` 이 붙는다 — `failed`(관찰했더니 틀림) / `unobserved`(관찰 자체를 못 함).
 3. **차원·종합 점수 산출**: 위 산출식 적용.
 4. **주입 오버라이드(테스트용)**: `--score=N` 또는 `--major-complaints=N` 이 주어지면
    결정적 테스트를 위해 해당 값으로 종합/major 를 **덮어씁니다**(관찰 기반 산출 대신).
@@ -147,6 +158,18 @@
 
 > 동일 입력(관찰값/주입값) → 항상 동일 점수. Math.random / 현재시각은 점수 산출에 사용하지 않습니다
 > (`createdAt` 타임스탬프는 점수와 무관한 메타데이터일 뿐입니다).
+
+### 5.1 미관찰은 통과가 아니다 (2차 자기진단 F19)
+
+관찰 기반 항목은 **`=== true`(또는 유한한 0)** 만 통과로 인정합니다. `null`/`undefined`(미관찰)는 불만입니다.
+
+- 예전에는 `o.x !== false` 형태여서 **관찰하지 않은 값(undefined)이 통과**로 계산됐습니다.
+- 정적 폴백은 그 위에 `appMounted: serverReady === true`·`runtimeErrors: 0` 처럼
+  **브라우저를 띄우지도 않고 앱이 마운트됐고 런타임 에러가 없다고 단정**했습니다.
+- 그 결과 Playwright 없이 dev 서버가 200 만 줘도 **종합 92 / major 0 → done-gate PASS** 가 났습니다(실측).
+
+지금은 정적 폴백이 **종합 32 / major 다수**로 산출되어 임계(90)를 구조적으로 넘지 못합니다.
+즉 **실측 관찰(Playwright) 없이는 merge 할 수 없습니다.** 모르면 점수를 주지 않는 것이 원칙입니다.
 
 ---
 

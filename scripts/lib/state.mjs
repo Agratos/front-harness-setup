@@ -81,6 +81,8 @@ function makeCheckpointToken(phaseSeq, phase, counter) {
  *   failures: Record<string, number>,
  *   escalations: number,
  *   blockedReason: string|null,
+ *   blockedAt: string|null,
+ *   lastExecutedPhaseSeq: number|null,
  *   gateOverride: boolean,
  *   status: 'init'|'running'|'blocked'|'done'
  * }}
@@ -107,6 +109,12 @@ export function defaultState(planSteps = []) {
 		escalations: 0,
 		// blocked 사유(사람이 읽는 한 줄). status!=='blocked' 면 null.
 		blockedReason: null,
+		// blocked 시점의 저장소 지문(HEAD + 작업트리). `--resume` 이 "조치 없이 재개" 인지
+		// 판정하는 근거. status!=='blocked' 면 null.
+		blockedAt: null,
+		// **실행에 착수한** phaseSeq. loop 가 페이즈를 돌리기 직전에 기록한다.
+		// 전진(advancePhase)이 남지 않은 채 이 값이 현재 phaseSeq 와 같으면 = 실행 중 크래시.
+		lastExecutedPhaseSeq: null,
 		// 투표 오버라이드: 5회 재작업 후 에이전트 투표가 "주관 임계(90점) 대체"를 의결하면
 		// true 가 되어 다음 merge 의 done-gate 가 결정적 게이트만 강제(주관 임계 우회)하게 한다.
 		// 새 step 으로 넘어가면 false 로 초기화된다 (step 마다 독립).
@@ -199,4 +207,26 @@ export function needsRerun(state) {
 			state.planSteps.length > 0 &&
 			state.currentStepIdx >= state.planSteps.length);
 	return phaseDone && state.committed === false;
+}
+
+/**
+ * **실행 도중 중단**(크래시)된 상태인지 판정.
+ *
+ * needsRerun 은 "status=done / step 소진 + 미커밋" 만 잡는다. 그 두 조건은 드라이버 자신의
+ * 전이로는 도달할 수 없어서(status=done 은 더 앞에서 조기 return 되고, nextTransition 은
+ * currentStepIdx 를 planSteps.length 까지 올리지 않는다) 실제 운영 중 RERUN 이 한 번도
+ * 표시되지 않았다 — 헤더가 광고하는 멱등 재개가 사실상 죽어 있었다(2차 자기진단 F21).
+ *
+ * 이 함수가 그 구멍을 메운다. loop 는 페이즈를 **실행하기 직전** lastExecutedPhaseSeq 에
+ * 현재 phaseSeq 를 남긴다. 정상 완료하면 advancePhase 가 phaseSeq 를 올리므로
+ * `lastExecutedPhaseSeq < phaseSeq` 가 되고, 실행 중 죽으면 두 값이 같은 채로 남는다.
+ *
+ * @param {object|null} state
+ * @returns {boolean} 같은 phaseSeq 를 이미 착수했고 커밋되지 않았으면 true
+ */
+export function wasInterrupted(state) {
+	if (!state) return false;
+	if (state.committed === true) return false;
+	const seq = state.lastExecutedPhaseSeq;
+	return Number.isInteger(seq) && seq === (state.phaseSeq ?? 0);
 }

@@ -319,6 +319,9 @@ if (!evalObj) {
 		hasLandmarks: true,
 		appMounted: true,
 		runtimeErrors: 0,
+		// 상호작용 실증 — 루브릭 fn.e2e-verified 의 입력(eval-scenario 산출물).
+		// 미관찰(null)이면 major 불만이 된다: 관찰하지 않은 것을 통과로 세지 않는다.
+		e2ePassed: true,
 		navigable: true,
 		a11yViolations: 0,
 		gatesGreen: true,

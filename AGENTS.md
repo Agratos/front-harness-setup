@@ -68,8 +68,13 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **게이트 실측 반영**(루브릭 `q.gates-green` 이 실제 게이트 결과를 읽음) | **코드 강제** — `done-gate.mjs` → `harness/gate-status.json` → `eval-playwright.mjs`            |
 | **실패 라우팅**(재시도 3 → 결함분류 되돌림 → 3 초과 시 `blocked`)       | **코드 강제** — `loop.mjs` `classifyFailure`/`computeFailureRouting`. 라이브락 금지             |
 | **상호작용(E2E) 검증**(verify 가 `eval-scenario` 를 실행, 단언 실패 시 전진 차단) | **코드 강제** — `loop.mjs` verify 페이즈. 예전엔 md 3곳의 ⛔ 지시뿐이라 실제로는 아무도 안 돌렸다(테스트벤치 실측) |
+| **E2E 검증 가능성**(스펙 부재·손상·dev 서버 미기동 = exit 2 → 전진 차단)  | **코드 강제** — `eval-scenario.mjs` exit code 분리(0 통과/면제/환경부재, 1 단언실패, 2 검증불가) + `loop.mjs` 가 원인별 되돌림(스펙 문제→`design`, 기동 실패→`implement`). 면제는 `skipReason` 명시 필요 |
+| **평가 산출물 생성**(evaluate 가 `eval-playwright` 를 실행, 이번 사이클 평가가 없으면 전진 차단) | **코드 강제** — `loop.mjs` evaluate 페이즈. exit code 대신 **산출물(cycleId 일치)로 판정**. 예전엔 호출자 0건이었다 |
+| **미관찰 감점**(관찰하지 못한 항목은 통과가 아니라 불만)                  | **코드 강제** — `rubric.mjs` 는 `=== true` 만 통과, `eval-playwright.mjs` 정적 폴백은 미관찰을 `null` 로 남김 → 폴백은 임계(90) 통과 불가 |
+| **상호작용 실증 채점**(`fn.e2e-verified` 가 이번 사이클 E2E 결과를 읽음)  | **코드 강제** — `eval-scenario` → `scen-<cycle>/scenario.json` → `rubric.mjs`. 없으면 major 불만 |
+| **blocked 재개 증거**(`--resume` 은 blocked 이후 저장소가 바뀌어야 허용)   | **코드 강제** — `loop.mjs` `repoFingerprint`. 강제 재개는 `--resume --force` (로그에 명시) |
 | dev 서버 teardown·포트 해제                                             | **코드 강제** — `scripts/eval-playwright.mjs` / `teardown.mjs`                                  |
-| Notion 미러 **적재 + 라이브 flush**(대시보드 진행상황·결정 결론)        | **코드** — 적재: `loop.mjs`→`upsertDashboard`, `log.mjs`→`mirrorDecisionComment`; flush: `loop`·`init-project` 가 `notion-flush.mjs`(Notion REST) 자동 실행(useMcp+`NOTION_TOKEN` 게이트, best-effort) |
+| Notion 허브 갱신(대시보드 진행상황·결정 결론)                            | ⚠️ **오케스트레이터 수동 준수** — 구조를 지우던 REST 미러를 제거한 뒤 **코드 강제가 없다**. `loop.mjs` 는 `upsertDashboard` 를 호출하지 않으며(적재 함수는 남아 있으나 호출자 없음), 갱신은 `run-cycle.md` 의 커넥터 절차로만 보장된다. `log.mjs`→`mirrorDecisionComment`(결정 결론 적재)와 `init-project`→`flushOutbox` 만 코드 경로다 |
 | **에이전트 subset 선정**(누구를 투입할지), K=3 동시 호출 상한, 3 라운드 반박, `주장:이유` 형식, PM 경유 릴레이, 투표의 *내용*(누가 무엇에 표를 던지나·다수결 판단·캐스팅보트) | **오케스트레이터 수동 준수** — 코드 차단 없음. CEO 가 `docs/agent-roster.md` 기본값을 출발점으로 판단(힌트, 강제 아님). |
 
 > 즉 **토론·중재의 절차 규칙(K=3·3R·형식)과 투표의 내용은 코드로 강제되지 않습니다.** 오케스트레이터가 이 규약을 따르도록 작성돼 있으며, 결과물(decisions 파일)의 형식·내용으로 사후 점검합니다.

@@ -86,7 +86,8 @@ async function main() {
 	// ───────────────────────── [B] RUBRIC ─────────────────────────
 	console.log('[B] RUBRIC — 주입 관찰값 → 기대 점수');
 
-	// 완벽 관찰 → 모든 항목 통과 → 종합 100, major 0
+	// 완벽 관찰 → 모든 항목 통과 → 종합 100, major 0.
+	// ⚠️ 모든 관찰 기반 필드를 **명시**해야 한다 — 미관찰(undefined)은 이제 통과가 아니다(F19).
 	const perfectObs = {
 		bodyNonEmpty: true,
 		titleMatches: true,
@@ -95,12 +96,16 @@ async function main() {
 		serverReady: true,
 		layoutStable: true,
 		hasViewportMeta: true,
+		responsiveLayout: true,
+		hasLandmarks: true,
 		appMounted: true,
 		runtimeErrors: 0,
+		e2ePassed: true,
 		navigable: true,
 		gatesGreen: true,
 		screenshotOk: true,
 		observable: true,
+		a11yViolations: 0,
 	};
 	const perfect = scoreObservations(perfectObs);
 	check('[B] 완벽 관찰 → 종합 100', perfect.score === 100);
@@ -119,6 +124,49 @@ async function main() {
 	// UI: 100-20=80 → 종합=0.25*80+75=95
 	check('[B] title(minor) 누락 → 종합 95', noTitle.score === 95);
 	check('[B] title(minor) 누락 → major 0', noTitle.majorComplaints === 0);
+
+	// ── [B2] fail-open 반전 회귀 검증 (2차 자기진단 F18·F19) ──────────────────────
+	// ① 미관찰(undefined)을 통과로 세지 않는다: 관찰 기반 항목을 비운 관찰값은 임계를 못 넘어야 한다.
+	const unobserved = {
+		titleMatches: true,
+		headingPresent: true,
+		hasViewportMeta: true,
+		serverReady: true,
+		gatesGreen: true,
+		screenshotOk: false,
+		observable: false,
+		// 나머지(bodyNonEmpty/appMounted/runtimeErrors/e2ePassed/...)는 미관찰 → null
+		bodyNonEmpty: null,
+		consoleErrors: null,
+		layoutStable: null,
+		responsiveLayout: null,
+		hasLandmarks: null,
+		appMounted: null,
+		runtimeErrors: null,
+		e2ePassed: null,
+		navigable: null,
+		a11yViolations: null,
+	};
+	const fallback = scoreObservations(unobserved);
+	check(`[B2] 정적 폴백(미관찰 다수) → 종합 90 미달 (실제 ${fallback.score})`, fallback.score < 90);
+	check('[B2] 정적 폴백 → major 불만 발생(merge 차단)', fallback.majorComplaints > 0);
+	check('[B2] 미관찰 불만에 reason=unobserved 표기', fallback.complaints.some((c) => c.reason === 'unobserved'));
+	check(
+		'[B2] appMounted 미관찰 → fn.app-mounts 불만',
+		fallback.complaints.some((c) => c.item === 'fn.app-mounts' && c.severity === 'major'),
+	);
+
+	// ② 상호작용 미실증은 통과할 수 없다: 나머지가 완벽해도 e2ePassed 가 없으면 major.
+	const noE2e = scoreObservations({ ...perfectObs, e2ePassed: null });
+	check('[B2] E2E 산출물 없음 → major 불만 1건 이상', noE2e.majorComplaints >= 1);
+	check('[B2] E2E 산출물 없음 → fn.e2e-verified 불만', noE2e.complaints.some((c) => c.item === 'fn.e2e-verified'));
+	// ③ 상호작용 실패도 동일하게 major (reason 은 failed)
+	const failE2e = scoreObservations({ ...perfectObs, e2ePassed: false });
+	check(
+		'[B2] E2E 단언 실패 → fn.e2e-verified 불만(reason=failed)',
+		failE2e.complaints.some((c) => c.item === 'fn.e2e-verified' && c.reason === 'failed'),
+	);
+	check('[B2] 빈 스캐폴드가 100점을 받던 경로 차단 확인', failE2e.score < 100 && failE2e.majorComplaints > 0);
 
 	// 주입 오버라이드: 관찰과 무관하게 score/major 덮어쓰기
 	const injected = applyInjectedScore(scoreObservations(perfectObs), { score: 40, majorComplaints: 2 });

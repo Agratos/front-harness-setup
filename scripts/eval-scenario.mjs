@@ -17,7 +17,20 @@
 //               { "assert": "inputValue",   "label": "제목", "value": "..." }
 //               { "assert": "minCount",     "selector": ".mantine-Card-root", "expect": 2 }
 //
-// 종료 코드: 단언이 하나라도 실패하면 1(= 기능 결함 → done-gate/QA 가 rework 로 처리), 통과/skip 이면 0.
+// ── 종료 코드 (2차 자기진단 F15·F16 반영: skip 과 pass 를 분리한다) ────────────────
+//   0 = 통과 · 또는 **명시적 면제**(스펙에 skipReason 기재) · 또는 **환경 부재**(Playwright 미설치)
+//   1 = 단언 실패 (기능 결함 → 구현으로 되돌림)
+//   2 = **검증 불가** (스펙 없음 / 스펙 깨짐 / 시나리오 0개인데 면제 사유 없음 / dev 서버 미기동)
+//
+// 왜 갈랐나: 예전에는 위 모든 경우가 `{passed:true}` + exit 0 이었다. 그래서 스펙 파일을 만들지
+// 않으면 verify 의 E2E 강제가 **아무 것도 검사하지 않고 통과**했고(실측), dev 서버가 아예 뜨지
+// 않는 상태가 앱이 크래시한 상태보다 **관대하게** 처리됐다. 증거 부재는 통과가 아니다.
+// skip 은 도구가 없어서 못 하는 경우(환경 부재)에만 허용하고, 산출물 부재는 실패로 분류한다.
+//
+// 면제가 필요할 때(예: UI 상호작용이 없는 리팩터 step)는 **명시적으로** 적는다:
+//   harness/eval-scenario.json → { "scenarios": [], "skipReason": "이 step 은 순수 타입 리팩터" }
+// 침묵의 통과 대신 기록된 면제를 요구한다.
+//
 // 실행: node scripts/eval-scenario.mjs [--port=8000] [--spec=<path>] [--id=scenario] [--no-server]
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -32,6 +45,28 @@ const DEFAULT_PORT = 8000;
 const ASSERT_TIMEOUT_MS = 5_000;
 const isWin = process.platform === 'win32';
 const log = (...a) => console.error('[scenario]', ...a);
+
+export const EXIT_PASS = 0;
+export const EXIT_ASSERT_FAIL = 1;
+export const EXIT_UNVERIFIABLE = 2;
+
+/**
+ * 결과 산출물을 항상 남긴다 — skip 경로도 포함.
+ *
+ * 예전에는 skip 경로가 파일을 아무것도 남기지 않아서, 나중에 "E2E 가 돌았는지" 를
+ * 확인할 방법이 없었다(= 검증하지 않은 것과 검증해서 통과한 것이 구분되지 않음).
+ * 이제 평가(eval-playwright)의 `fn.e2e-verified` 항목이 이 파일을 읽는다.
+ */
+function writeOutcome(repoRoot, id, payload) {
+	try {
+		const dir = path.join(repoRoot, 'harness', 'evaluations', id);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(path.join(dir, 'scenario.json'), JSON.stringify(payload, null, 2) + '\n', 'utf8');
+	} catch {
+		// 산출물 기록 실패가 판정을 뒤집지는 않는다.
+	}
+	return payload;
+}
 
 function parseArgs(argv) {
 	const o = { port: DEFAULT_PORT, spec: null, id: 'scenario', noServer: false };
@@ -161,18 +196,69 @@ export async function runStep(page, step) {
 /** 메인: 스펙의 시나리오들을 dev 서버 + Playwright 로 실제 실행. */
 export async function runScenarios(opts, repoRoot) {
 	const specPath = opts.spec ?? path.join(repoRoot, 'harness', 'eval-scenario.json');
+	const specRel = path.relative(repoRoot, specPath);
+	const base = { id: opts.id, mode: 'scenario' };
+
+	// ── 검증 불가 ①: 스펙 산출물 부재 → 실패(exit 2). 예전에는 조용히 통과했다.
 	if (!existsSync(specPath)) {
-		log(`시나리오 스펙 없음(${path.relative(repoRoot, specPath)}) — skip(차단 안 함)`);
-		return { skipped: true, reason: 'no-spec', passed: true };
+		log(`❌ 시나리오 스펙 없음(${specRel}) — 상호작용 검증 불가`);
+		log(`   이 step 의 핵심 유스케이스를 액션+단언으로 적으세요 (예시: harness/eval-scenario.example.json).`);
+		log(`   상호작용이 없는 step 이면 면제를 명시하세요: { "scenarios": [], "skipReason": "<이유>" }`);
+		return writeOutcome(repoRoot, opts.id, {
+			...base,
+			passed: false,
+			exitCode: EXIT_UNVERIFIABLE,
+			unverifiable: 'no-spec',
+			reason: `스펙 파일 없음(${specRel})`,
+			scenarioCount: 0,
+			failures: [],
+		});
 	}
 	let spec;
 	try {
 		spec = JSON.parse(readFileSync(specPath, 'utf8'));
 	} catch (e) {
-		log('스펙 파싱 실패:', e?.message ?? e);
-		return { skipped: true, reason: 'bad-spec', passed: true };
+		// ── 검증 불가 ②: 스펙이 깨짐 → 실패. 문법 오류를 통과로 읽으면 게이트가 무의미해진다.
+		log(`❌ 스펙 파싱 실패(${specRel}):`, e?.message ?? e);
+		return writeOutcome(repoRoot, opts.id, {
+			...base,
+			passed: false,
+			exitCode: EXIT_UNVERIFIABLE,
+			unverifiable: 'bad-spec',
+			reason: `스펙 JSON 파싱 실패: ${String(e?.message ?? e).slice(0, 200)}`,
+			scenarioCount: 0,
+			failures: [],
+		});
 	}
 	const scenarios = spec.scenarios ?? [];
+	const skipReason = typeof spec.skipReason === 'string' ? spec.skipReason.trim() : '';
+
+	// ── 명시적 면제: 시나리오 0개 + 사유 기재 → 통과(exit 0). 기록은 남는다.
+	if (scenarios.length === 0 && skipReason) {
+		log(`⚠ 상호작용 검증 면제(명시) — 사유: ${skipReason}`);
+		return writeOutcome(repoRoot, opts.id, {
+			...base,
+			passed: true,
+			exitCode: EXIT_PASS,
+			exempt: true,
+			reason: skipReason,
+			scenarioCount: 0,
+			failures: [],
+		});
+	}
+	// ── 검증 불가 ③: 빈 스펙인데 사유가 없음 → 실패. "스펙을 만들어 두고 비워두기" 우회를 막는다.
+	if (scenarios.length === 0) {
+		log(`❌ 스펙에 시나리오가 0개인데 면제 사유(skipReason)가 없습니다 — 검증 불가`);
+		return writeOutcome(repoRoot, opts.id, {
+			...base,
+			passed: false,
+			exitCode: EXIT_UNVERIFIABLE,
+			unverifiable: 'empty-spec',
+			reason: '시나리오 0개 + skipReason 없음',
+			scenarioCount: 0,
+			failures: [],
+		});
+	}
 	const shotDir = path.join(repoRoot, 'harness', 'evaluations', opts.id);
 	let child;
 	let serverReady = false;
@@ -186,13 +272,35 @@ export async function runScenarios(opts, repoRoot) {
 			serverReady = await waitForReady(opts.port, 3_000);
 		}
 		if (!serverReady) {
-			log('서버 미준비 — skip');
-			return { skipped: true, reason: 'server-not-ready', passed: true };
+			// ── 검증 불가 ④: dev 서버가 뜨지 않음 → 실패.
+			// 앱이 크래시하면 차단되는데 아예 뜨지 않으면 통과하던 역전을 바로잡는다.
+			// typecheck/test 가 못 잡는 기동 실패(vite 설정, 포트 점유, 런타임 import 오류)가 이 경로다.
+			log(`❌ dev 서버가 준비되지 않음(포트 ${opts.port}) — 상호작용 검증 불가`);
+			return writeOutcome(repoRoot, opts.id, {
+				...base,
+				passed: false,
+				exitCode: EXIT_UNVERIFIABLE,
+				unverifiable: 'server-not-ready',
+				reason: `dev 서버 미기동(포트 ${opts.port}) — 앱이 아예 뜨지 않음`,
+				scenarioCount: scenarios.length,
+				failures: [],
+			});
 		}
 		const pw = await tryLoadPlaywright();
 		if (!pw) {
-			log('Playwright 미설치 — skip');
-			return { skipped: true, reason: 'no-playwright', passed: true };
+			// 환경 부재(도구 미설치)는 유일하게 허용되는 skip 이다 — 산출물 부재와 구분한다.
+			// 단 이 경우 eval-playwright 도 정적 폴백으로 떨어지고, 폴백은 루브릭상 90점을 넘지
+			// 못하므로 merge 는 여전히 막힌다(F19 수정과 짝을 이룬다).
+			log('⚠ Playwright 미설치 — 환경 부재로 skip(exit 0). 평가는 정적 폴백으로 떨어져 merge 는 막힙니다.');
+			return writeOutcome(repoRoot, opts.id, {
+				...base,
+				passed: true,
+				exitCode: EXIT_PASS,
+				envSkip: 'no-playwright',
+				reason: 'Playwright 미설치(환경 부재)',
+				scenarioCount: scenarios.length,
+				failures: [],
+			});
 		}
 		const browser = await pw.chromium.launch({ headless: true });
 		try {
@@ -271,6 +379,7 @@ export async function runScenarios(opts, repoRoot) {
 			id: opts.id,
 			mode: 'scenario',
 			passed: failures.length === 0,
+			exitCode: failures.length === 0 ? EXIT_PASS : EXIT_ASSERT_FAIL,
 			scenarioCount: results.length,
 			scenarios: results.map((r) => ({
 				name: r.name,
@@ -304,7 +413,9 @@ export async function runScenarios(opts, repoRoot) {
 async function main() {
 	const opts = parseArgs(process.argv.slice(2));
 	const out = await runScenarios(opts, process.cwd());
-	process.exit(out && out.passed === false ? 1 : 0);
+	// exitCode 를 결과에 담아 반환하므로 그대로 쓴다 (0 통과/면제/환경부재, 1 단언실패, 2 검증불가).
+	const code = Number.isInteger(out?.exitCode) ? out.exitCode : out?.passed === false ? EXIT_ASSERT_FAIL : EXIT_PASS;
+	process.exit(code);
 }
 
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

@@ -163,10 +163,19 @@ async function tryLoadPlaywright() {
 }
 
 /**
- * 정적 폴백 관찰값 — index.html 을 파싱해 가능한 만큼 수집(Playwright 없이).
- * 서버 준비 여부(serverReady)는 호출자가 주입.
+ * 정적 폴백 관찰값 — index.html 을 파싱해 **정말로 알 수 있는 것만** 채운다(Playwright 없이).
+ *
+ * ⚠️ 미관찰은 `null` 이다 (2차 자기진단 F19). 예전에는 관찰하지 않은 항목을
+ * `layoutStable: true`·`responsiveLayout: true`·`a11yViolations: 0` 처럼 통과로 채우고,
+ * 심지어 `appMounted: serverReady === true`·`runtimeErrors: 0` 처럼 **브라우저를 띄우지도 않고
+ * 앱이 마운트됐고 런타임 에러가 없다고 단정**했다. 그 결과 정적 폴백만으로 종합 92점 / major 0 →
+ * done-gate PASS 가 났다(실측). `resolveGatesGreen` 은 이미 "모르면 false" 로 고쳐져 있었는데
+ * 나머지 필드에는 같은 원칙이 적용되지 않은 **부분 수정** 상태였다.
+ *
+ * 이제 폴백은 구조적으로 임계(90)를 넘을 수 없다 — 관찰하지 못했으면 점수를 주지 않는다.
+ * 서버 준비 여부(serverReady)는 호출자가 주입(HTTP 프로브로 실제 관찰한 값).
  */
-function staticObservations(repoRoot, { serverReady, gatesGreen }) {
+function staticObservations(repoRoot, { serverReady, gatesGreen, e2ePassed }) {
 	const expected = expectedAppName(repoRoot);
 	let title = null;
 	let headingPresent = false;
@@ -184,27 +193,46 @@ function staticObservations(repoRoot, { serverReady, gatesGreen }) {
 		/* 파싱 실패 → 기본값 유지 */
 	}
 	return {
-		bodyNonEmpty: serverReady === true, // 서버가 떴다면 정적으로는 body 채워짐으로 간주
-		titleMatches: title === expected,
-		headingPresent,
-		consoleErrors: 0,
-		serverReady: serverReady === true,
-		layoutStable: true,
-		hasViewportMeta,
-		responsiveLayout: true, // 정적 폴백은 레이아웃 미관찰 → 기본 통과
-		hasLandmarks: true, // 정적 폴백은 landmark 미관찰 → 기본 통과
-		appMounted: serverReady === true,
-		runtimeErrors: 0,
-		navigable: true,
-		a11yViolations: 0, // 정적 폴백은 a11y 미관찰 → 위반 0 으로 간주
-		gatesGreen: gatesGreen !== false,
-		screenshotOk: false, // 폴백은 스크린샷 없음
+		// ── 정적으로 관찰 가능한 것 ──
+		titleMatches: title === expected, // index.html 파싱
+		headingPresent, // App.tsx 소스 확인
+		hasViewportMeta, // index.html 파싱
+		serverReady: serverReady === true, // HTTP 프로브 실측
+		gatesGreen: gatesGreen === true, // gate-status.json 실측
+		e2ePassed: e2ePassed === undefined ? null : e2ePassed, // eval-scenario 산출물(있으면)
+		// ── DOM 을 보지 않고는 알 수 없는 것 → null(미관찰) ──
+		bodyNonEmpty: null,
+		consoleErrors: null,
+		layoutStable: null,
+		responsiveLayout: null,
+		hasLandmarks: null,
+		appMounted: null,
+		runtimeErrors: null,
+		navigable: null,
+		a11yViolations: null,
+		screenshotOk: false, // 폴백은 스크린샷 없음(관찰이 아니라 사실)
 		observable: false, // 실측 관찰 불가
 	};
 }
 
+/**
+ * 이번 사이클의 상호작용(E2E) 결과를 읽는다 — 루브릭 `fn.e2e-verified` 의 입력.
+ * loop 의 verify 가 `harness/evaluations/scen-step-<idx>-r<rework>/scenario.json` 을 남긴다.
+ * 파일이 없으면 null(미관찰) → 그 항목은 major 불만이 된다.
+ * @returns {boolean|null}
+ */
+export function readE2eOutcome(repoRoot, state) {
+	const scenId = `scen-${cycleIdOf(state).replace('#', '-r')}`;
+	try {
+		const raw = JSON.parse(readFileSync(path.join(repoRoot, 'harness', 'evaluations', scenId, 'scenario.json'), 'utf8'));
+		return raw.passed === true;
+	} catch {
+		return null;
+	}
+}
+
 /** Playwright 로 실측 관찰값 수집 + 스크린샷. 실패 시 null. */
-async function playwrightObservations(pw, port, shotPath, { gatesGreen, expectedName }) {
+async function playwrightObservations(pw, port, shotPath, { gatesGreen, expectedName, e2ePassed }) {
 	let browser;
 	try {
 		browser = await pw.chromium.launch({ headless: true });
@@ -289,7 +317,9 @@ async function playwrightObservations(pw, port, shotPath, { gatesGreen, expected
 			runtimeErrors: runtimeErrors.length,
 			navigable,
 			a11yViolations,
-			gatesGreen: gatesGreen !== false,
+			gatesGreen: gatesGreen === true,
+			// 상호작용 실증 — verify 가 남긴 이번 사이클 산출물. 없으면 null(미관찰 → major 불만).
+			e2ePassed: e2ePassed === undefined ? null : e2ePassed,
 			screenshotOk: existsSync(shotPath),
 			domOk: existsSync(domPath),
 			screenshotMobileOk: existsSync(mobileShotPath),
@@ -325,8 +355,10 @@ function writeEvaluation(repoRoot, id, evalObj, shotRelPath) {
 	}).join('\n');
 
 	const complaintRows = evalObj.complaints.length
-		? evalObj.complaints.map((c) => `| ${c.dimension} | ${c.item} | ${c.severity} |`).join('\n')
-		: '| — | (불만 없음) | — |';
+		? evalObj.complaints
+				.map((c) => `| ${c.dimension} | ${c.item} | ${c.severity} | ${c.reason === 'unobserved' ? '미관찰' : '관찰 실패'} |`)
+				.join('\n')
+		: '| — | (불만 없음) | — | — |';
 
 	const md = [
 		`# 평가 로그 — ${id}`,
@@ -345,8 +377,8 @@ function writeEvaluation(repoRoot, id, evalObj, shotRelPath) {
 		``,
 		`## 불만 목록 (실패한 체크리스트 항목)`,
 		``,
-		`| 차원 | 항목 | 심각도 |`,
-		`| --- | --- | --- |`,
+		`| 차원 | 항목 | 심각도 | 사유 |`,
+		`| --- | --- | --- | --- |`,
 		complaintRows,
 		``,
 		`## 관찰값`,
@@ -390,6 +422,17 @@ export async function runEvaluation(opts, repoRoot) {
 		log(`게이트 상태(${gatesSource}): ${gatesGreen ? 'green' : 'RED'}`);
 	}
 
+	// 상호작용(E2E) 실증 결과 — 루브릭 fn.e2e-verified 의 입력. verify 가 먼저 돌아야 존재한다.
+	const e2ePassed = readE2eOutcome(repoRoot, st);
+	if (e2ePassed === null) {
+		log(
+			`⚠ 상호작용(E2E) 산출물 없음 — 이번 사이클(${cycleIdOf(st)})의 scenario.json 이 없습니다. ` +
+				`fn.e2e-verified 를 실패(major)로 처리합니다. verify 페이즈를 먼저 실행하세요.`,
+		);
+	} else {
+		log(`상호작용(E2E) 실증: ${e2ePassed ? 'PASS' : 'FAIL'}`);
+	}
+
 	try {
 		// 1) dev 서버 기동 (--no-server 면 생략 — 외부에서 띄운 서버 가정)
 		if (!opts.noServer) {
@@ -405,16 +448,20 @@ export async function runEvaluation(opts, repoRoot) {
 		// 2) Playwright 실측 시도 → 실패/미설치 시 정적 폴백
 		const pw = serverReady ? await tryLoadPlaywright() : null;
 		if (pw && serverReady) {
-			observations = await playwrightObservations(pw, port, shotPath, { gatesGreen, expectedName: expectedAppName(repoRoot) });
+			observations = await playwrightObservations(pw, port, shotPath, {
+				gatesGreen,
+				expectedName: expectedAppName(repoRoot),
+				e2ePassed,
+			});
 			if (observations) {
 				mode = 'playwright';
 			} else {
 				log('Playwright 브라우저 실패 → 정적 폴백으로 전환');
-				observations = staticObservations(repoRoot, { serverReady, gatesGreen });
+				observations = staticObservations(repoRoot, { serverReady, gatesGreen, e2ePassed });
 			}
 		} else {
-			if (!pw) log('Playwright 미설치 — 정적 폴백');
-			observations = staticObservations(repoRoot, { serverReady, gatesGreen });
+			if (!pw) log('Playwright 미설치 — 정적 폴백(미관찰 항목은 감점 → 임계 통과 불가)');
+			observations = staticObservations(repoRoot, { serverReady, gatesGreen, e2ePassed });
 		}
 
 		// 3) 채점 (루브릭) + 주입 오버라이드

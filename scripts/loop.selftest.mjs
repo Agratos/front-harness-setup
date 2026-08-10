@@ -425,6 +425,173 @@ try {
 	}
 }
 
+// ── 시나리오 G: 2차 자기진단 반영 — evaluate 코드 강제 · E2E 검증불가 차단 · 크래시 재개 ──
+console.log('');
+console.log('=== loop selftest G: fail-open 반전 + evaluate 강제 ===');
+
+// (G-1) 분류: E2E 검증 불가는 단언 실패와 다르게 라우팅된다
+{
+	const spec = classifyFailure('verify', { passed: true, gates: [] }, { e2e: 'unverifiable', unverifiable: 'no-spec' });
+	check('G: 스펙 부재 → 설계결함 → design (AC 를 정의해야 함)', spec.kind === '설계결함' && spec.nextPhase === 'design');
+	const boot = classifyFailure('verify', { passed: true, gates: [] }, { e2e: 'unverifiable', unverifiable: 'server-not-ready' });
+	check('G: 서버 미기동 → 구현결함 → implement', boot.kind === '구현결함' && boot.nextPhase === 'implement');
+	const assertFail = classifyFailure('verify', { passed: true, gates: [] }, { e2e: 'assert' });
+	check('G: 단언 실패 → 구현결함 → implement (기존 동작 유지)', assertFail.kind === '구현결함' && assertFail.nextPhase === 'implement');
+	const evalDefect = classifyFailure('evaluate', null, { evaluate: 'no-artifact' });
+	check('G: 평가 산출물 미생성 → 검증결함 → evaluate', evalDefect.kind === '검증결함' && evalDefect.nextPhase === 'evaluate');
+}
+
+// (G-2) 통합: eval-scenario 가 exit 2(검증 불가)면 verify 에서 전진하지 않는다
+const tmpG1 = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-unverifiable-'));
+try {
+	mkdirSync(path.join(tmpG1, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpG1, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpG1, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpG1, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+	// 스펙이 없는 상황을 흉내내는 스텁: exit 2 + 원인 산출물
+	writeFileSync(
+		path.join(tmpG1, 'scripts', 'eval-scenario.mjs'),
+		[
+			"import { mkdirSync, writeFileSync } from 'node:fs';",
+			"const id = (process.argv.slice(2).find((a) => a.startsWith('--id=')) ?? '--id=x').slice('--id='.length);",
+			"mkdirSync(`harness/evaluations/${id}`, { recursive: true });",
+			"writeFileSync(`harness/evaluations/${id}/scenario.json`, JSON.stringify({ passed: false, unverifiable: 'no-spec', reason: '스펙 파일 없음' }));",
+			'process.exit(2);',
+		].join('\n') + '\n',
+		'utf8',
+	);
+
+	invokeLoop(tmpG1, ['--init', '01-unverifiable']);
+	for (let i = 0; i < 3; i++) invokeLoop(tmpG1); // decompose→design→implement
+	const vr = invokeLoop(tmpG1); // verify
+	const stG1 = readState(stateFilePath(tmpG1));
+	check('G: E2E 검증 불가 → verify 에서 전진하지 않음', stG1.phase === 'verify');
+	check('G: 실패 카운터 증가', (stG1.failures?.verify ?? 0) >= 1);
+	check('G: 로그에 "검증 불가" + 원인 표기', /검증 불가/.test(vr.stdout) && /스펙 파일 없음/.test(vr.stdout));
+	check('G: 설계결함으로 분류 표기', /설계결함/.test(vr.stdout));
+} catch (err) {
+	failures.push(`G-2 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpG1, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
+// (G-3) 통합: evaluate 페이즈가 eval-playwright 를 실제로 호출한다 (마커로 증명)
+const tmpG2 = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-evaluate-'));
+try {
+	mkdirSync(path.join(tmpG2, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpG2, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpG2, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpG2, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+	writeFileSync(path.join(tmpG2, 'scripts', 'eval-scenario.mjs'), 'process.exit(0);\n', 'utf8');
+	// 호출되면 마커 + 이번 사이클 평가 산출물을 남기는 eval-playwright 스텁
+	writeFileSync(
+		path.join(tmpG2, 'scripts', 'eval-playwright.mjs'),
+		[
+			"import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';",
+			"writeFileSync('playwright-was-called.txt', 'yes');",
+			"const st = JSON.parse(readFileSync('harness/state.json', 'utf8'));",
+			'const cycleId = `step-${st.currentStepIdx ?? 0}#${st.reworkCount ?? 0}`;',
+			"mkdirSync('harness/evaluations', { recursive: true });",
+			"writeFileSync('harness/evaluations/eval-0001.json', JSON.stringify({ id: 'eval-0001', score: 100, majorComplaints: 0, cycleId, stepId: `step-${st.currentStepIdx ?? 0}` }));",
+			'process.exit(0);',
+		].join('\n') + '\n',
+		'utf8',
+	);
+
+	invokeLoop(tmpG2, ['--init', '01-evaluate']);
+	for (let i = 0; i < 4; i++) invokeLoop(tmpG2); // decompose→design→implement→verify
+	const er = invokeLoop(tmpG2); // evaluate
+	check('G: evaluate 가 eval-playwright 를 실제로 호출함', existsSync(path.join(tmpG2, 'playwright-was-called.txt')));
+	check('G: 산출물 확인 로그 표기', /산출물 강제|eval-playwright ok/.test(er.stdout));
+	const stG2 = readState(stateFilePath(tmpG2));
+	check('G: 평가 산출물이 생겼으므로 debate 로 전진', stG2.phase === 'debate');
+} catch (err) {
+	failures.push(`G-3 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpG2, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
+// (G-4) 통합: eval-playwright 가 있는데 산출물이 안 생기면 evaluate 에서 막힌다
+const tmpG3 = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-noeval-'));
+try {
+	mkdirSync(path.join(tmpG3, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpG3, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpG3, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpG3, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+	writeFileSync(path.join(tmpG3, 'scripts', 'eval-scenario.mjs'), 'process.exit(0);\n', 'utf8');
+	// 아무 산출물도 남기지 않는 평가 스텁 (예전 md-only 상태의 재현)
+	writeFileSync(path.join(tmpG3, 'scripts', 'eval-playwright.mjs'), 'process.exit(0);\n', 'utf8');
+
+	invokeLoop(tmpG3, ['--init', '01-noeval']);
+	for (let i = 0; i < 4; i++) invokeLoop(tmpG3);
+	const er = invokeLoop(tmpG3); // evaluate — 산출물 없음 → 실패
+	const stG3 = readState(stateFilePath(tmpG3));
+	check('G: 평가 산출물 미생성 → evaluate 에서 전진하지 않음', stG3.phase === 'evaluate');
+	check('G: 검증결함으로 분류', /검증결함/.test(er.stdout));
+	check('G: 실패 카운터 증가', (stG3.failures?.evaluate ?? 0) >= 1);
+} catch (err) {
+	failures.push(`G-4 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpG3, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
+// (G-5) 크래시 재개: 실행 착수만 기록된 상태에서 재호출하면 같은 페이즈를 RERUN 한다.
+//       (예전에는 needsRerun 의 두 트리거가 드라이버 전이로 도달 불가여서 RERUN 이 한 번도 안 떴다.)
+const tmpG4 = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-interrupt-'));
+try {
+	mkdirSync(path.join(tmpG4, 'harness'), { recursive: true });
+	writeFileSync(
+		path.join(tmpG4, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	const statePathG4 = stateFilePath(tmpG4);
+	invokeLoop(tmpG4, ['--init', '01-interrupt']);
+	const r1 = invokeLoop(tmpG4); // decompose 실행 → design 으로 전진
+	check('G: 정상 전진에는 RERUN 표시가 없다', !/RERUN/.test(r1.stdout));
+	// 크래시 시뮬레이션: 착수 기록은 남았지만 전진(advancePhase)이 남지 않은 상태
+	const stMid = readState(statePathG4);
+	writeFileSync(
+		statePathG4,
+		JSON.stringify({ ...stMid, lastExecutedPhaseSeq: stMid.phaseSeq, committed: false }, null, 2) + '\n',
+		'utf8',
+	);
+	const r2 = invokeLoop(tmpG4);
+	check('G: 실행 중 크래시 상태 → 같은 페이즈 RERUN 표시', /RERUN — 멱등 재개/.test(r2.stdout));
+} catch (err) {
+	failures.push(`G-5 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpG4, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
 console.log('');
 if (failures.length === 0) {
 	console.log('LOOP SELFTEST: PASS');

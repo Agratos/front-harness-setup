@@ -335,6 +335,8 @@ export function runDoneGate(opts, repoRoot) {
 			latched: false,
 			reason: '투표 오버라이드: 재작업 한도(5회) 초과 후 에이전트 투표로 주관 임계 대체 (결정적 게이트는 충족)',
 		};
+		// 우회 통과는 실측 통과와 **같은 exit 0** 이므로, 최소한 눈에 보이게 남긴다(2차 자기진단 F24).
+		result.bypass = 'vote-override';
 		result.passed = result.deterministic.passed;
 		return { exitCode: result.passed ? 0 : 1, result };
 	}
@@ -348,6 +350,11 @@ export function runDoneGate(opts, repoRoot) {
 	result.cycleId = cycleId;
 
 	const evaluation = resolveEvaluation(opts, repoRoot);
+	// 주입 평가(--score / HARNESS_EVAL_SCORE)는 루브릭 산출을 덮고 신선도 검사도 면제된다.
+	// CI/테스트 경로이지만 자율 루프도 쓸 수 있는 환경변수이므로 **우회 사실을 결과에 남긴다**(F24).
+	if (evaluation?.source === 'injected') {
+		result.bypass = 'injected-score';
+	}
 	if (!evaluation) {
 		result.evaluation = null;
 		result.hysteresis = { pass: false, latched: false, reason: '평가 데이터 없음 (주입/파일 모두 부재)' };
@@ -415,7 +422,16 @@ function printHuman(result) {
 	if (result.hysteresis) {
 		console.log(`히스테리시스: ${result.hysteresis.pass ? 'PASS' : 'FAIL'} (latched=${result.hysteresis.latched}) — ${result.hysteresis.reason}`);
 	}
-	console.log(`done-gate 종합: ${result.passed ? 'PASS' : 'FAIL'}`);
+	if (result.bypass) {
+		// 우회 통과를 조용히 지나치지 않는다 — 실측 통과와 구분되게 표시한다.
+		console.log(
+			`⚠ 주관 평가 우회: ${result.bypass}` +
+				(result.bypass === 'injected-score'
+					? ' (주입 점수 — 루브릭 산출·신선도 검사 미적용)'
+					: ' (투표 의결 — 결정적 게이트는 유지)'),
+		);
+	}
+	console.log(`done-gate 종합: ${result.passed ? 'PASS' : 'FAIL'}${result.bypass ? ' (우회 경유)' : ''}`);
 }
 
 function main() {
