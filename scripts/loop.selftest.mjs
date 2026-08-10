@@ -9,7 +9,7 @@
 // 임시 cwd 에는 scripts/done-gate.mjs / scripts/git-flow.mjs 가 없으므로
 // verify/merge 결정적 페이즈는 no-op 통과 처리되어, 시퀀싱만 순수하게 검증됩니다.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -341,6 +341,85 @@ try {
 } finally {
 	try {
 		rmSync(tmpDirD, { recursive: true, force: true });
+	} catch {
+		// 정리 실패는 결과에 영향 없음
+	}
+}
+
+// ── 시나리오 E: verify 가 상호작용(E2E) 검증을 실제로 호출한다 ──
+console.log('');
+console.log('=== loop selftest E: verify → eval-scenario 배선 ===');
+
+// (E-1) 분류: verify 실패인데 결정적 게이트가 green 이면 = 상호작용 결함 → implement
+{
+	const c = classifyFailure('verify', { passed: true, gates: [{ name: 'test', ok: true }] });
+	check('E: verify 실패 + 게이트 green → 구현결함 → implement', c.kind === '구현결함' && c.nextPhase === 'implement');
+	check('E: 사유에 상호작용/E2E 명시', /상호작용|E2E/.test(c.why));
+}
+
+// (E-2) 통합: verify 페이즈가 eval-scenario.mjs 를 실제로 실행하는가 (마커 파일로 증명)
+const tmpDirE = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-e2e-'));
+try {
+	mkdirSync(path.join(tmpDirE, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpDirE, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpDirE, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	// 통과하는 done-gate 스텁 + 호출되면 마커를 남기는 eval-scenario 스텁
+	writeFileSync(path.join(tmpDirE, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+	writeFileSync(
+		path.join(tmpDirE, 'scripts', 'eval-scenario.mjs'),
+		"import { writeFileSync } from 'node:fs';\nwriteFileSync('scenario-was-called.txt', process.argv.slice(2).join(' '));\nprocess.exit(0);\n",
+		'utf8',
+	);
+
+	invokeLoop(tmpDirE, ['--init', '01-e2e']); // 시드
+	// decompose → design → implement → verify 까지 전진
+	for (let i = 0; i < 4; i++) invokeLoop(tmpDirE);
+
+	const markerPath = path.join(tmpDirE, 'scenario-was-called.txt');
+	check('E: verify 가 eval-scenario 를 실제로 호출함', existsSync(markerPath));
+	if (existsSync(markerPath)) {
+		const args = readFileSync(markerPath, 'utf8');
+		check('E: 사이클 식별자를 --id 로 전달', /--id=scen-step-0-r0/.test(args));
+	}
+} catch (err) {
+	failures.push(`E 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpDirE, { recursive: true, force: true });
+	} catch {
+		// 정리 실패는 결과에 영향 없음
+	}
+}
+
+// (E-3) 통합: eval-scenario 가 실패하면 verify 가 통과하지 않는다
+const tmpDirF = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-e2efail-'));
+try {
+	mkdirSync(path.join(tmpDirF, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpDirF, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpDirF, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpDirF, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+	writeFileSync(path.join(tmpDirF, 'scripts', 'eval-scenario.mjs'), 'process.exit(1);\n', 'utf8'); // 단언 실패
+
+	invokeLoop(tmpDirF, ['--init', '01-e2e-fail']);
+	for (let i = 0; i < 3; i++) invokeLoop(tmpDirF); // decompose→design→implement, 다음이 verify
+	const vr = invokeLoop(tmpDirF); // verify 실행 → 실패해야 함
+	const stF = readState(stateFilePath(tmpDirF));
+	check('E: 상호작용 실패 시 verify 에서 전진하지 않음', stF.phase === 'verify');
+	check('E: 실패 카운터 증가', (stF.failures?.verify ?? 0) >= 1);
+	check('E: 로그에 상호작용 단언 실패 표기', /eval-scenario|상호작용/.test(vr.stdout));
+} catch (err) {
+	failures.push(`F 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpDirF, { recursive: true, force: true });
 	} catch {
 		// 정리 실패는 결과에 영향 없음
 	}

@@ -67,6 +67,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **평가 신선도**(사이클 단위 — 이전 재작업 회차 평가 재사용 차단)        | **코드 강제** — `done-gate.mjs` freshness + `state.mjs` `cycleIdOf`                             |
 | **게이트 실측 반영**(루브릭 `q.gates-green` 이 실제 게이트 결과를 읽음) | **코드 강제** — `done-gate.mjs` → `harness/gate-status.json` → `eval-playwright.mjs`            |
 | **실패 라우팅**(재시도 3 → 결함분류 되돌림 → 3 초과 시 `blocked`)       | **코드 강제** — `loop.mjs` `classifyFailure`/`computeFailureRouting`. 라이브락 금지             |
+| **상호작용(E2E) 검증**(verify 가 `eval-scenario` 를 실행, 단언 실패 시 전진 차단) | **코드 강제** — `loop.mjs` verify 페이즈. 예전엔 md 3곳의 ⛔ 지시뿐이라 실제로는 아무도 안 돌렸다(테스트벤치 실측) |
 | dev 서버 teardown·포트 해제                                             | **코드 강제** — `scripts/eval-playwright.mjs` / `teardown.mjs`                                  |
 | Notion 미러 **적재 + 라이브 flush**(대시보드 진행상황·결정 결론)        | **코드** — 적재: `loop.mjs`→`upsertDashboard`, `log.mjs`→`mirrorDecisionComment`; flush: `loop`·`init-project` 가 `notion-flush.mjs`(Notion REST) 자동 실행(useMcp+`NOTION_TOKEN` 게이트, best-effort) |
 | **에이전트 subset 선정**(누구를 투입할지), K=3 동시 호출 상한, 3 라운드 반박, `주장:이유` 형식, PM 경유 릴레이, 투표의 *내용*(누가 무엇에 표를 던지나·다수결 판단·캐스팅보트) | **오케스트레이터 수동 준수** — 코드 차단 없음. CEO 가 `docs/agent-roster.md` 기본값을 출발점으로 판단(힌트, 강제 아님). |
