@@ -1,0 +1,985 @@
+<title>harness-setup 심층 분석 — 발견 14건 · 개선 로드맵</title>
+<style>
+	:root {
+		--bg: #edeff2;
+		--surface: #ffffff;
+		--surface-2: #f4f6f8;
+		--ink: #12161b;
+		--ink-2: #4e5a66;
+		--ink-3: #7c8894;
+		--line: #d3d9df;
+		--line-strong: #b3bdc6;
+		--accent: #2f4858;
+		--accent-soft: #e2e9ee;
+		--p0: #a8342a;
+		--p1: #8a6008;
+		--p2: #5f6b76;
+		--ok: #2a6249;
+		--code-bg: #f1f4f6;
+
+		--sans: "Pretendard", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, -apple-system, sans-serif;
+		--mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", "D2Coding", monospace;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:root:not([data-theme="light"]) {
+			--bg: #0f1317;
+			--surface: #161b21;
+			--surface-2: #1b2129;
+			--ink: #e6eaee;
+			--ink-2: #a2aeb9;
+			--ink-3: #75828e;
+			--line: #262e36;
+			--line-strong: #3a454f;
+			--accent: #93b8cb;
+			--accent-soft: #1e2a33;
+			--p0: #e28377;
+			--p1: #d5a64b;
+			--p2: #9aa7b2;
+			--ok: #6dbf9b;
+			--code-bg: #1b2129;
+		}
+	}
+
+	:root[data-theme="dark"] {
+		--bg: #0f1317;
+		--surface: #161b21;
+		--surface-2: #1b2129;
+		--ink: #e6eaee;
+		--ink-2: #a2aeb9;
+		--ink-3: #75828e;
+		--line: #262e36;
+		--line-strong: #3a454f;
+		--accent: #93b8cb;
+		--accent-soft: #1e2a33;
+		--p0: #e28377;
+		--p1: #d5a64b;
+		--p2: #9aa7b2;
+		--ok: #6dbf9b;
+		--code-bg: #1b2129;
+	}
+
+	* { box-sizing: border-box; }
+
+	body {
+		margin: 0;
+		background: var(--bg);
+		color: var(--ink);
+		font-family: var(--sans);
+		font-size: 16px;
+		line-height: 1.75;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	code, .mono { font-family: var(--mono); font-variant-ligatures: none; }
+
+	.wrap {
+		max-width: 1140px;
+		margin: 0 auto;
+		padding: 0 24px 96px;
+	}
+
+	/* ── 헤더 ───────────────────────────────── */
+	.masthead {
+		border-bottom: 2px solid var(--ink);
+		padding: 56px 0 20px;
+		margin-bottom: 40px;
+	}
+	.eyebrow {
+		font-family: var(--mono);
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 14px;
+	}
+	.masthead h1 {
+		font-size: clamp(30px, 4.6vw, 46px);
+		line-height: 1.18;
+		letter-spacing: -0.02em;
+		font-weight: 800;
+		margin: 0 0 12px;
+		text-wrap: balance;
+	}
+	.masthead .lede {
+		font-size: 17px;
+		color: var(--ink-2);
+		margin: 0;
+		max-width: 62ch;
+	}
+	.meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 22px;
+		font-family: var(--mono);
+		font-size: 12.5px;
+		color: var(--ink-3);
+		margin-top: 22px;
+	}
+	.meta b { color: var(--ink-2); font-weight: 600; }
+
+	/* ── 레이아웃 ───────────────────────────── */
+	.layout { display: block; }
+	@media (min-width: 1000px) {
+		.layout {
+			display: grid;
+			grid-template-columns: 208px minmax(0, 1fr);
+			gap: 56px;
+			align-items: start;
+		}
+	}
+
+	.toc { display: none; }
+	@media (min-width: 1000px) {
+		.toc {
+			display: block;
+			position: sticky;
+			top: 32px;
+			border-top: 1px solid var(--line-strong);
+			padding-top: 14px;
+		}
+	}
+	.toc h2 {
+		font-family: var(--mono);
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 12px;
+		font-weight: 500;
+	}
+	.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+	.toc a {
+		display: flex;
+		gap: 9px;
+		align-items: baseline;
+		text-decoration: none;
+		color: var(--ink-2);
+		font-size: 13.5px;
+		line-height: 1.5;
+		padding: 3px 0;
+		border-bottom: 1px solid transparent;
+	}
+	.toc a:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+	.toc a .num { font-family: var(--mono); font-size: 11px; color: var(--ink-3); min-width: 15px; }
+
+	main { min-width: 0; }
+
+	section { margin-bottom: 68px; scroll-margin-top: 24px; }
+	section > h2 {
+		font-size: 13px;
+		font-family: var(--mono);
+		letter-spacing: 0.13em;
+		text-transform: uppercase;
+		color: var(--accent);
+		font-weight: 600;
+		margin: 0 0 6px;
+	}
+	section > .title {
+		font-size: clamp(22px, 2.8vw, 28px);
+		font-weight: 750;
+		letter-spacing: -0.015em;
+		margin: 0 0 24px;
+		padding-bottom: 14px;
+		border-bottom: 1px solid var(--line-strong);
+		text-wrap: balance;
+	}
+	p { margin: 0 0 16px; max-width: 72ch; }
+	.dim { color: var(--ink-2); }
+
+	/* ── 통계 타일 ──────────────────────────── */
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 1px;
+		background: var(--line);
+		border: 1px solid var(--line);
+		margin-bottom: 30px;
+	}
+	.tile { background: var(--surface); padding: 18px 18px 16px; }
+	.tile .k {
+		font-family: var(--mono);
+		font-size: 10.5px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		display: block;
+		margin-bottom: 8px;
+	}
+	.tile .v {
+		font-family: var(--mono);
+		font-size: 30px;
+		font-weight: 600;
+		letter-spacing: -0.02em;
+		line-height: 1;
+		font-variant-numeric: tabular-nums;
+		display: block;
+	}
+	.tile .v small { font-size: 15px; font-weight: 400; color: var(--ink-3); }
+	.tile .n { font-size: 12.5px; color: var(--ink-3); margin-top: 7px; display: block; line-height: 1.5; }
+	.tile.crit .v { color: var(--p0); }
+	.tile.good .v { color: var(--ok); }
+
+	/* ── 인용/논지 블록 ─────────────────────── */
+	.thesis {
+		background: var(--surface);
+		border: 1px solid var(--line-strong);
+		border-left: 3px solid var(--accent);
+		padding: 22px 26px;
+		margin: 26px 0;
+	}
+	.thesis p { margin: 0; font-size: 17px; }
+	.thesis p + p { margin-top: 12px; }
+	.thesis strong { font-weight: 700; }
+
+	/* ── 강점 ───────────────────────────────── */
+	.strengths { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+	.strengths > div { background: var(--surface); padding: 14px 18px; display: grid; gap: 4px; }
+	@media (min-width: 720px) { .strengths > div { grid-template-columns: 230px minmax(0, 1fr); gap: 20px; align-items: baseline; } }
+	.strengths dt { font-weight: 650; font-size: 15px; }
+	.strengths dd { margin: 0; color: var(--ink-2); font-size: 14.5px; }
+
+	/* ── 발견 사항 ledger ───────────────────── */
+	.ledger { border-top: 1px solid var(--line-strong); }
+	.finding {
+		border-bottom: 1px solid var(--line);
+		padding: 26px 0;
+		display: grid;
+		gap: 12px;
+	}
+	@media (min-width: 760px) {
+		.finding { grid-template-columns: 96px minmax(0, 1fr); gap: 28px; }
+	}
+	.f-mark { display: flex; flex-direction: row; gap: 8px; align-items: center; }
+	@media (min-width: 760px) { .f-mark { flex-direction: column; align-items: flex-start; gap: 7px; padding-top: 4px; } }
+	.fid {
+		font-family: var(--mono);
+		font-size: 19px;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		color: var(--ink);
+	}
+	.sev {
+		font-family: var(--mono);
+		font-size: 10.5px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		padding: 2px 7px;
+		border: 1px solid currentColor;
+		line-height: 1.5;
+	}
+	.sev-p0 { color: var(--p0); }
+	.sev-p1 { color: var(--p1); }
+	.sev-p2 { color: var(--p2); }
+
+	.finding h3 {
+		font-size: 19px;
+		font-weight: 700;
+		letter-spacing: -0.012em;
+		margin: 0 0 12px;
+		line-height: 1.4;
+		text-wrap: balance;
+	}
+	.finding p { margin: 0 0 12px; }
+	.finding p:last-child { margin-bottom: 0; }
+
+	.lbl {
+		display: inline-block;
+		font-family: var(--mono);
+		font-size: 10.5px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin-right: 8px;
+		vertical-align: 1px;
+	}
+	.fix { border-top: 1px dashed var(--line-strong); padding-top: 12px; margin-top: 14px; }
+	.fix .lbl { color: var(--accent); }
+
+	code {
+		background: var(--code-bg);
+		border: 1px solid var(--line);
+		padding: 0.5px 5px;
+		font-size: 0.875em;
+		white-space: nowrap;
+	}
+	pre {
+		background: var(--code-bg);
+		border: 1px solid var(--line);
+		padding: 14px 16px;
+		overflow-x: auto;
+		font-family: var(--mono);
+		font-size: 13px;
+		line-height: 1.65;
+		margin: 0 0 14px;
+	}
+	pre code { background: none; border: 0; padding: 0; white-space: pre; font-size: 1em; }
+	pre .cm { color: var(--ink-3); }
+	pre .hl { color: var(--p0); font-weight: 600; }
+
+	ul.tight { margin: 0 0 14px; padding-left: 20px; }
+	ul.tight li { margin-bottom: 5px; }
+	ul.tight li::marker { color: var(--ink-3); }
+
+	/* ── 표 ─────────────────────────────────── */
+	.scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--line); background: var(--surface); }
+	table { border-collapse: collapse; width: 100%; min-width: 480px; font-size: 14.5px; }
+	th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+	thead th {
+		font-family: var(--mono);
+		font-size: 10.5px;
+		letter-spacing: 0.11em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		font-weight: 500;
+		border-bottom: 1px solid var(--line-strong);
+		background: var(--surface-2);
+		white-space: nowrap;
+	}
+	tbody tr:last-child td { border-bottom: 0; }
+	td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+	td .ref { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+	.size { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-2); white-space: nowrap; }
+
+	/* ── 코드 강제 vs md 준수 ───────────────── */
+	.split { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: 22px; }
+	@media (min-width: 720px) { .split { grid-template-columns: 1fr 1fr; } }
+	.split > div { background: var(--surface); padding: 20px 22px; }
+	.split h4 {
+		font-family: var(--mono);
+		font-size: 12px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		margin: 0 0 12px;
+		font-weight: 600;
+	}
+	.split .code-side h4 { color: var(--ok); }
+	.split .md-side h4 { color: var(--p1); }
+	.split ul { margin: 0; padding-left: 18px; font-size: 14.5px; color: var(--ink-2); }
+	.split li { margin-bottom: 6px; }
+
+	/* ── 마무리 ─────────────────────────────── */
+	.closing {
+		border-top: 2px solid var(--ink);
+		padding-top: 22px;
+		margin-top: 12px;
+	}
+	.closing p { font-size: 16.5px; }
+	.next {
+		font-family: var(--mono);
+		font-size: 14px;
+		background: var(--surface);
+		border: 1px solid var(--line-strong);
+		padding: 16px 18px;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px 12px;
+		align-items: center;
+		line-height: 1.6;
+	}
+	.next .arrow { color: var(--ink-3); }
+	.next .step { color: var(--ink); }
+	.next .step b { color: var(--p0); font-weight: 600; }
+
+	a { color: var(--accent); }
+	a:focus-visible, .toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+	@media (prefers-reduced-motion: reduce) {
+		* { transition: none !important; animation: none !important; }
+	}
+</style>
+
+<div class="wrap">
+	<header class="masthead">
+		<p class="eyebrow">Harness Review · 2026-08-10</p>
+		<h1>harness-setup 심층 분석<br />발견 14건과 개선 로드맵</h1>
+		<p class="lede">
+			멀티 에이전트 자율 개발 하네스의 코드·문서 전량을 읽고, 결정적 골격과 품질 판정 사이의
+			간극을 정리했습니다. 결론부터 말하면 골격은 견고하고, 품질층이 거의 전부 md 준수에 의존합니다.
+		</p>
+		<div class="meta">
+			<span><b>대상</b> harness-setup @ main c67a501</span>
+			<span><b>범위</b> scripts · .claude · docs · src (120 files)</span>
+			<span><b>게이트</b> typecheck 0 / lint 0 / test 5 passed / arch 0</span>
+		</div>
+	</header>
+
+	<div class="layout">
+		<nav class="toc" aria-label="목차">
+			<h2>목차</h2>
+			<ol>
+				<li><a href="#summary"><span class="num">01</span><span>요약</span></a></li>
+				<li><a href="#strength"><span class="num">02</span><span>유지할 자산</span></a></li>
+				<li><a href="#root"><span class="num">03</span><span>근본 원인</span></a></li>
+				<li><a href="#findings"><span class="num">04</span><span>발견 14건</span></a></li>
+				<li><a href="#roadmap"><span class="num">05</span><span>로드맵</span></a></li>
+				<li><a href="#principle"><span class="num">06</span><span>설계 원칙</span></a></li>
+				<li><a href="#misc"><span class="num">07</span><span>부수 사항</span></a></li>
+			</ol>
+		</nav>
+
+		<main>
+			<!-- 01 요약 -->
+			<section id="summary">
+				<h2>01 — Summary</h2>
+				<p class="title">한눈에 보기</p>
+
+				<div class="tiles">
+					<div class="tile">
+						<span class="k">발견 사항</span>
+						<span class="v">14<small> 건</small></span>
+						<span class="n">F1–F14, 우선순위 3단계</span>
+					</div>
+					<div class="tile crit">
+						<span class="k">P0 — 즉시</span>
+						<span class="v">5<small> 건</small></span>
+						<span class="n">전부 "가짜 통과" 계열</span>
+					</div>
+					<div class="tile crit">
+						<span class="k">확정 결함</span>
+						<span class="v">7<small> 건</small></span>
+						<span class="n">코드 4 · 배선 1 · 문서 2</span>
+					</div>
+					<div class="tile good">
+						<span class="k">현재 게이트</span>
+						<span class="v">PASS</span>
+						<span class="n">4종 green (실행 확인)</span>
+					</div>
+				</div>
+
+				<p>
+					하네스는 <strong>결정적 골격(코드) + 판단·품질(md 준수)</strong> 의 2층 구조입니다.
+					골격은 잘 만들어졌습니다. 문제는 품질을 담보하는 지시가 거의 전부 마크다운 안에만 있고,
+					지키지 않아도 아무것도 막지 않는다는 점입니다.
+				</p>
+
+				<div class="thesis">
+					<p>
+						<code>run-cycle.md</code> 에 ⛔ 마크가 5개, <strong>"실제 사고:"</strong> 주석이 6개 있습니다.
+						같은 실패가 반복돼 md 경고를 계속 덧붙였다는 증거입니다.
+					</p>
+					<p class="dim">md 경고를 늘리는 방식은 이미 수확체감 구간에 들어섰습니다.</p>
+				</div>
+			</section>
+
+			<!-- 02 강점 -->
+			<section id="strength">
+				<h2>02 — Assets</h2>
+				<p class="title">유지해야 할 자산</p>
+				<p>아래 다섯 가지는 이 하네스가 또래 대비 확실히 앞선 지점입니다. 개선 과정에서 훼손하지 않아야 합니다.</p>
+
+				<dl class="strengths">
+					<div>
+						<dt>결정적 상태 기계</dt>
+						<dd>1호출 = 1페이즈, <code>state.mjs</code> 의 tmp→rename 원자적 쓰기. 턴 경계·크래시를 넘어 재개됩니다.</dd>
+					</div>
+					<div>
+						<dt>강제 모델의 자기인식</dt>
+						<dd><code>AGENTS.md:59-71</code> — "무엇이 코드 강제이고 무엇이 md 준수인가"를 표로 명시. 이 정도로 정직한 하네스는 드뭅니다.</dd>
+					</div>
+					<div>
+						<dt>가짜 통과 방어 1세대</dt>
+						<dd>stale 평가 거부(<code>done-gate.mjs:299</code>), <code>eval-*.json</code> 필터, 히스테리시스·래치로 플래핑 차단.</dd>
+					</div>
+					<div>
+						<dt>자가검증 문화</dt>
+						<dd>self-test 13종 + CI + 통합 데모. 실사고 → 백로그 → 반영의 회고 루프가 실제로 돌고 있습니다.</dd>
+					</div>
+					<div>
+						<dt>git 안전장치</dt>
+						<dd><code>assertNotDirectMainWork</code> 로 main 직접 작업 차단, merge-step 을 main 쓰기 유일 경로로 고정.</dd>
+					</div>
+				</dl>
+			</section>
+
+			<!-- 03 근본 원인 -->
+			<section id="root">
+				<h2>03 — Root cause</h2>
+				<p class="title">발견 대부분은 한 줄로 수렴합니다</p>
+
+				<div class="thesis">
+					<p><strong>"작업이 실제로 일어났는가"를 코드가 검증하지 않습니다.</strong></p>
+				</div>
+
+				<p>
+					페이즈 8개 중 코드가 실제로 무언가를 강제하는 것은 <code>verify</code> 와 <code>merge</code> 둘뿐입니다.
+					나머지는 로그 한 줄을 남기고 무조건 전진합니다.
+				</p>
+
+				<div class="split">
+					<div class="code-side">
+						<h4>코드가 강제하는 것</h4>
+						<ul>
+							<li>페이즈 시퀀싱 · 멱등 재개</li>
+							<li>결정적 게이트 4종</li>
+							<li>평가 임계치 · 히스테리시스</li>
+							<li>재작업 5회 → 투표 분기</li>
+							<li>브랜치 보호 · merge 게이트</li>
+							<li>dev 서버 teardown</li>
+						</ul>
+					</div>
+					<div class="md-side">
+						<h4>md 준수에만 의존하는 것</h4>
+						<ul>
+							<li>구현이 실제로 있었는가</li>
+							<li>토론·평가가 실제로 있었는가</li>
+							<li>스크린샷을 실제로 봤는가 (B3)</li>
+							<li>E2E 시나리오를 실제로 돌렸는가</li>
+							<li>Notion 허브 갱신 (354줄 사양)</li>
+							<li>에이전트 subset 선정 · 투표 내용</li>
+						</ul>
+					</div>
+				</div>
+
+				<p>
+					오른쪽 목록에서 아래 두 개(선정·투표)는 <strong>판단</strong>이므로 md 가 맞습니다.
+					나머지 넷은 판단이 아니라 <strong>산출물의 존재 여부</strong>이므로 코드로 옮길 수 있습니다.
+					이 이동이 이번 개선의 전부라고 봐도 됩니다.
+				</p>
+			</section>
+
+			<!-- 04 발견 -->
+			<section id="findings">
+				<h2>04 — Findings</h2>
+				<p class="title">발견 사항 14건</p>
+
+				<div class="ledger">
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F1</span><span class="sev sev-p0">P0</span></div>
+						<div>
+							<h3>에이전트 페이즈는 무조건 전진합니다</h3>
+							<p>
+								<span class="lbl">증상</span><code>loop.mjs:267-280</code> 에서
+								decompose·design·implement·evaluate·debate·vote 는 산출물 유무를 확인하지 않고 전진합니다.
+							</p>
+							<pre><code><span class="cm"># 코드 0줄, 결정 0건, 토론 0회로 한 step "완주"</span>
+node scripts/loop.mjs   <span class="hl">× 7회</span>  →  status 전진 완료</code></pre>
+							<p>
+								merge 의 done-gate 가 막아줄 것 같지만, 빈 스캐폴드는 게이트 4종을 통과하고
+								루브릭도 90+ 를 줍니다(F3). <strong>실제로 차단되지 않습니다.</strong>
+							</p>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span><strong>페이즈 산출물 게이트</strong> — 전진 전에 산출물 존재 +
+									신선도(<code>stepId</code>·<code>phaseSeq</code> 스탬프)를 검증하고, 없으면 전진 거부 + exit 2.
+								</p>
+								<div class="scroll">
+									<table>
+										<thead><tr><th>페이즈</th><th>요구 산출물 (신선도 스탬프 포함)</th></tr></thead>
+										<tbody>
+											<tr><td class="num">decompose</td><td><code>decisions/&lt;id&gt;.md</code> + plan.json 의 해당 step 수용기준</td></tr>
+											<tr><td class="num">design</td><td><code>decisions/&lt;id&gt;-arch.md</code></td></tr>
+											<tr><td class="num">implement</td><td>step 브랜치 커밋 ≥1 <strong>AND</strong> <code>src/</code> diff ≠ 0</td></tr>
+											<tr><td class="num">evaluate</td><td><code>evaluations/&lt;id&gt;.json</code> + <code>&lt;id&gt;.verdict.json</code></td></tr>
+											<tr><td class="num">debate</td><td><code>decisions/&lt;id&gt;.md</code> 의 해당 라운드 섹션</td></tr>
+										</tbody>
+									</table>
+								</div>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F2</span><span class="sev sev-p0">P0</span></div>
+						<div>
+							<h3>빈 병합이 코드로 막히지 않습니다</h3>
+							<p>
+								<span class="lbl">증상</span><code>run-cycle.md:118</code> 이 "구현 커밋 안 하면 빈 병합" 을
+								⛔ 로 경고합니다(실사고 기록). 그런데 <code>git-flow.mjs:231-263</code> 의
+								<code>cmdMergeStep</code> 은 커밋 수도 diff 도 보지 않습니다.
+							</p>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span>merge 직전
+									<code>git rev-list --count main..step/&lt;nn&gt;-&lt;slug&gt; &gt; 0</code> 과
+									<code>src/</code> 경로 diff 비어있지 않음을 강제. <span class="size">규모: 소</span>
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F3</span><span class="sev sev-p0">P0</span></div>
+						<div>
+							<h3>루브릭이 품질을 측정하지 못합니다 (확정 버그 포함)</h3>
+							<p>
+								<span class="lbl">증상</span><code>rubric.mjs</code> 의 16개 항목이 전부 <strong>"앱이 떴는가"</strong>
+								수준입니다. 빈 스캐폴드가 90~100점을 받습니다.
+							</p>
+							<p>
+								<span class="lbl">확정 버그</span><code>eval-playwright.mjs:360,365,369</code> 가
+								<code>gatesGreen: true</code> 를 하드코딩해서 넘깁니다.
+							</p>
+							<pre><code><span class="cm">// eval-playwright.mjs:360</span>
+observations = await playwrightObservations(pw, port, shotPath, {
+  <span class="hl">gatesGreen: true</span>,   <span class="cm">// ← 실측 아님. 항상 통과</span>
+  expectedName: expectedAppName(repoRoot),
+});</code></pre>
+							<p>
+								<code>q.gates-green</code> 은 weight 40 · major 항목이라 <strong>종합 8점이 게이트 실제 상태와
+								무관하게 항상 지급</strong>됩니다. <code>layoutStable</code> 도 같은 상수입니다.
+							</p>
+							<p>
+								<span class="lbl">구조</span>진짜 품질 신호는 B3(에이전트가 스크린샷을 눈으로 보는 것)인데,
+								<strong>그 판정이 점수로 들어가는 코드 경로가 없습니다.</strong> 에이전트가
+								<code>&lt;id&gt;.json</code> 을 손으로 고쳐야 하고, 그건 곧 주관 점수 자유 기입 =
+								가짜 통과 벡터입니다.
+							</p>
+							<div class="fix">
+								<p><span class="lbl">해결</span>3단계로 나눠 처리합니다.</p>
+								<ul class="tight">
+									<li><code>gatesGreen</code> 을 <code>done-gate --deterministic-only --json</code> 실측값으로 교체 <span class="size">30분</span></li>
+									<li>육안 판정을 <code>&lt;id&gt;.verdict.json</code> 스키마로 받고 <code>eval-merge-verdict.mjs</code> 가 루브릭과 합성. <strong>verdict 없으면 done-gate FAIL</strong> → 육안 평가가 코드로 강제됨</li>
+									<li>루브릭에 <strong>"수용기준 충족"</strong> 차원 추가(가중치 0.3+) — F5 의 plan.json 과 1:1 매칭</li>
+								</ul>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F4</span><span class="sev sev-p0">P0</span></div>
+						<div>
+							<h3>E2E 러너가 게이트에 배선되어 있지 않습니다</h3>
+							<p>
+								<span class="lbl">증상</span><code>eval-scenario.mjs</code> 는 스스로 "최대 갭"이라 기록한 항목인데,
+								실행 경로가 없습니다.
+							</p>
+							<ul class="tight">
+								<li><code>done-gate.mjs</code> 에서 호출 <strong>안 함</strong></li>
+								<li><code>loop.mjs</code> 의 verify 페이즈에서 호출 <strong>안 함</strong></li>
+								<li>CI self-test 목록에 <code>eval-scenario.selftest.mjs</code> <strong>누락</strong> (<code>ci.yml:38-49</code>)</li>
+								<li>스펙 파일 없으면 <code>passed: true</code> 로 skip (<code>eval-scenario.mjs:163</code>)</li>
+							</ul>
+							<p>md 3곳에 "⛔ 무조건"이라 써 있지만 실행은 100% 오케스트레이터 자율입니다.</p>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span>verify 페이즈에서 실행 + <strong>스펙 부재 자체를 결함으로 승격</strong>
+									(step 당 최소 N개 단언, 면제는 decisions 에 명시 기록) + CI 편입.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F5</span><span class="sev sev-p1">P1</span></div>
+						<div>
+							<h3>사양 → 스텝 → 수용기준 → 평가 추적성이 0</h3>
+							<p>
+								<span class="lbl">증상</span><code>planSteps</code> 가
+								<code>["01-login","02-dashboard"]</code> 문자열 배열뿐입니다.
+								deep-interview 로 뽑은 요구사항이 어디에도 구조화되어 저장되지 않고,
+								decompose 산출물은 md 라서 <strong>아무 코드도 읽지 않습니다.</strong>
+								"만든 게 요구사항을 충족하나"를 판정할 근거가 시스템에 없습니다.
+							</p>
+							<div class="fix">
+								<p><span class="lbl">해결</span><code>harness/plan.json</code> 도입</p>
+								<pre><code>{ "steps": [{
+  "id": "01-login", "goal": "...",
+  "acceptance": ["이메일 형식 오류 시 제출 차단", "성공 시 /home 이동"],
+  "scenarios": ["fill → click → assert inputEmpty"],
+  "personas": 1,
+  "complexity": { "forms": 3, "states": 4, "slices": 2 }
+}]}</code></pre>
+								<p>
+									decompose 입력이자 evaluate 채점표이자 eval-scenario 스펙 생성원이 됩니다.
+									<strong>하네스에서 가장 큰 구조적 승리 지점</strong>입니다.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F6</span><span class="sev sev-p0">P0</span></div>
+						<div>
+							<h3>실패 시 라이브락 — 탈출구가 없습니다</h3>
+							<p>
+								<span class="lbl">증상</span><code>loop.mjs:260-266</code> — verify/merge 실패 시 전진하지 않고
+								<code>committed=false</code> 로 두어 같은 페이즈를 <strong>영원히 재실행</strong>합니다.
+								실패 카운터도 에스컬레이션도 없습니다.
+							</p>
+							<p><span class="lbl">가중</span>여기에 결함 둘이 겹칩니다.</p>
+							<ul class="tight">
+								<li>
+									<code>resolveDebateOutcome</code>(<code>loop.mjs:117-132</code>)이 <strong>stepId 를 안 봅니다.</strong>
+									이전 step 의 평가로 debate 가 pass → merge → done-gate 가 stale 거부 → <strong>merge 무한 반복</strong>.
+								</li>
+								<li>
+									freshness 가 <strong>step 단위</strong>입니다(<code>done-gate.mjs:299</code>).
+									같은 step 의 rework 1회차 평가(100점)가 3회차 merge 에서 그대로 통과합니다. <code>phaseSeq</code> 비교가 없습니다.
+								</li>
+							</ul>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span><code>resolveDebateOutcome</code> 에 stepId 필터 /
+									freshness 를 <code>phaseSeq ≥ 이번 사이클 evaluate 시작 seq</code> 로 강화 /
+									<code>verifyFailCount</code>·<code>mergeFailCount</code> 추가 → N회 초과 시 implement 회귀,
+									재초과 시 vote 또는 blocked + <code>report.md</code> 원인 리포트.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F7</span><span class="sev sev-p1">P1</span></div>
+						<div>
+							<h3>협의체 모델이 실행 가능한지 미검증</h3>
+							<p>
+								<span class="lbl">증상</span><code>pm.md:4</code> 가 <code>tools: …, Task</code> 로 선언하고
+								문서 전체가 "PM 이 K=3 으로 서브에이전트를 호출한다"를 전제합니다. 그런데
+								이 환경의 스폰 도구명은 <code>Agent</code> 이고(<code>Task</code> 는 구 명칭),
+								서브에이전트가 다시 서브에이전트를 스폰하는 것은 일반적으로 지원되지 않습니다.
+							</p>
+							<p>
+								즉 <strong>PM 코디네이터 릴레이는 문서상 구조일 뿐이고, 실제로는 메인 오케스트레이터가
+								다 하고 있을 가능성이 높습니다.</strong> K=3 · 3라운드 반박 · PM 경유 릴레이가 전부 그 위에 얹혀 있습니다.
+							</p>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span>실측 확인 후 둘 중 하나 —
+									(a) 오케스트레이터 = PM 으로 모델 재정의(문서 정합), 또는
+									(b) <code>scripts/pm.mjs</code> 가 페이즈별로 에이전트를 순차 호출하도록 코드화.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F8</span><span class="sev sev-p2">P2</span></div>
+						<div>
+							<h3>Notion 레이어 3세대 중첩 + 죽은 코드 + 문서 거짓말</h3>
+							<div class="scroll">
+								<table>
+									<thead><tr><th>세대</th><th>현황</th></tr></thead>
+									<tbody>
+										<tr><td class="num">1세대 <code>notion.mjs</code></td><td><code>upsertDashboard</code> — <strong>호출자 0건</strong> (죽은 코드)</td></tr>
+										<tr><td class="num">2세대 <code>notion-api.mjs</code></td><td><code>dashboard.reset</code>/<code>upsert</code> 는 비파괴 no-op — 실제로 아무 일도 안 함</td></tr>
+										<tr><td class="num">3세대 md 지시</td><td><code>notion-hub-layout.md</code> <strong>354줄 사양을 매 사이클 LLM 이 수동 준수</strong></td></tr>
+									</tbody>
+								</table>
+							</div>
+							<p>
+								그리고 <code>usage.md:118</code> 은 여전히 "loop·init 이 실제 Notion 에 자동 반영"이라 적혀 있는데,
+								<code>loop.mjs:306-308</code> 은 그 로직을 제거했습니다. <strong>문서가 거짓말을 하고 있습니다.</strong>
+							</p>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span><code>scripts/notion-hub.mjs</code> 로 멱등 upsert 코드화
+									(<code>harness/notion-state.json</code> 레지스트리 활용) → LLM 은 "무엇을 쓸지"만 결정,
+									"어떻게 쓸지"는 코드가. 죽은 경로 삭제 + 문서 정합. 나아가 <strong>reporter 인터페이스</strong>로
+									추상화하면 Notion 없는 환경(GitHub Issues·로컬 HTML)으로 확장됩니다.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F9</span><span class="sev sev-p1">P1</span></div>
+						<div>
+							<h3>check-arch 가 FSD 의 절반만 강제합니다</h3>
+							<p>
+								<span class="lbl">증상</span><code>check-arch.js:78</code> 의 정규식이
+								<strong><code>@/</code> 별칭 import 만</strong> 봅니다. 놓치는 것 4종:
+							</p>
+							<ul class="tight">
+								<li>상대경로 크로스 레이어 — <code>../../features/x</code> (완전 무방비)</li>
+								<li>동일 레이어 크로스 슬라이스 — <code>entities/a → entities/b</code></li>
+								<li><strong>배럴 우회 딥 임포트</strong> — <code>@/entities/example/model/store</code> (public API 무력화, 실무에서 가장 흔한 부패)</li>
+								<li>세그먼트 규약 — <code>ui/</code> 에서 직접 axios 호출 등</li>
+							</ul>
+							<div class="fix">
+								<p><span class="lbl">해결</span>규칙 4종 추가. <strong>값싸게 코드 강제 가능한 최고 ROI 항목</strong>입니다.</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F10</span><span class="sev sev-p1">P1</span></div>
+						<div>
+							<h3>CI 가 실제 운영 환경을 검증하지 않습니다</h3>
+							<ul class="tight">
+								<li><code>ubuntu-latest</code> 단독. 실운영은 <strong>Windows</strong> 이고 <code>taskkill /F /T</code>·<code>shell: true</code>·경로 처리 등 Windows 전용 코드가 CI 에서 한 번도 실행되지 않습니다</li>
+								<li>Playwright · eval-playwright · eval-scenario · demo 전부 CI 미실행</li>
+								<li><code>eval-scenario.selftest.mjs</code> 누락 (F4)</li>
+							</ul>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span><code>matrix: [windows-latest, ubuntu-latest]</code> +
+									스캐폴드 대상 e2e 잡(eval-playwright + eval-scenario) + demo 스모크.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F11</span><span class="sev sev-p1">P1</span></div>
+						<div>
+							<h3><code>.claude/settings.json</code> 이 없습니다 — hooks 0, permissions 0</h3>
+							<p>
+								<span class="lbl">증상</span>hooks 는 <strong>md 준수를 코드 강제로 바꿀 수 있는 유일한 하네스 레벨 수단</strong>인데
+								전혀 쓰고 있지 않습니다. permissions allowlist 부재는 "자율 실행 중 멈춤" 문제와 직결됩니다.
+							</p>
+							<div class="fix">
+								<p><span class="lbl">해결</span>훅 4종 즉시 도입 — 비용 대비 효과가 가장 빠릅니다.</p>
+								<div class="scroll">
+									<table>
+										<thead><tr><th>훅</th><th>효과</th></tr></thead>
+										<tbody>
+											<tr><td class="num">SessionStart</td><td>현재 step/phase/rework 자동 주입 → <code>/status</code> 수동 확인 불필요</td></tr>
+											<tr><td class="num">PreToolUse(Bash)</td><td>main 에서 <code>git commit</code>/<code>push</code> 실행 시 <strong>차단</strong></td></tr>
+											<tr><td class="num">Stop</td><td>페이즈 산출물 미존재 시 턴 종료 <strong>차단</strong> → F1 을 하네스 레벨에서 재차 강제</td></tr>
+											<tr><td class="num">permissions.allow</td><td><code>yarn *</code>·<code>node scripts/*</code>·<code>git *</code> 프롬프트 제거 → 무인 실행 안정화</td></tr>
+										</tbody>
+									</table>
+								</div>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F12</span><span class="sev sev-p2">P2</span></div>
+						<div>
+							<h3>관측·비용 통제 부재</h3>
+							<ul class="tight">
+								<li><code>harness/report.md</code> 는 demo 만 생성 — <strong>실제 런의 리포트가 없습니다</strong></li>
+								<li>사이클 소요시간·재작업률·게이트 실패 분포·점수 추이 데이터 없음 → 하네스 개선을 감으로 하게 됩니다</li>
+								<li>최대 사이클/예산 가드 없음 (한도 초과 중단이 반복 기록됨)</li>
+							</ul>
+							<div class="fix">
+								<p>
+									<span class="lbl">해결</span><code>harness/metrics.ndjson</code> +
+									<code>scripts/report.mjs</code>(cycle-log + evaluations + errors → 런 리포트),
+									<code>state.json</code> 에 budget 필드 + <code>--max-cycles</code>.
+								</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F13</span><span class="sev sev-p2">P2</span></div>
+						<div>
+							<h3>제품 테스트 강제가 "0개면 실패"뿐</h3>
+							<p>
+								<span class="lbl">증상</span>새 feature 를 추가해도 <strong>테스트가 없으면 그냥 통과</strong>합니다.
+								커버리지 델타도, 신규 슬라이스 대응 테스트 요구도 없습니다.
+							</p>
+							<div class="fix">
+								<p><span class="lbl">해결</span>커버리지 델타 게이트 또는 "신규 <code>src/features/*</code> 에 대응 테스트 필수" 휴리스틱을 게이트 5번째로.</p>
+							</div>
+						</div>
+					</article>
+
+					<article class="finding">
+						<div class="f-mark"><span class="fid">F14</span><span class="sev sev-p2">P2</span></div>
+						<div>
+							<h3>시크릿 스캔 게이트 없음</h3>
+							<p>
+								<span class="lbl">증상</span><code>.env</code> 는 gitignore 되어 있으나,
+								에이전트가 코드에 토큰을 박아 넣어도 아무도 막지 않습니다.
+								quality 에이전트는 md 문서일 뿐 실행 권한이 없습니다.
+							</p>
+							<div class="fix">
+								<p><span class="lbl">해결</span>결정적 게이트에 시크릿 패턴 스캔 추가(정규식 수준으로 충분).</p>
+							</div>
+						</div>
+					</article>
+
+				</div>
+			</section>
+
+			<!-- 05 로드맵 -->
+			<section id="roadmap">
+				<h2>05 — Roadmap</h2>
+				<p class="title">우선순위별 실행 순서</p>
+
+				<p><strong class="mono" style="color:var(--p0)">P0</strong> — "가짜 통과" 종식. 이걸 안 하면 나머지는 효과가 약합니다.</p>
+				<div class="scroll">
+					<table>
+						<thead><tr><th class="num">#</th><th>작업</th><th>파일</th><th class="num">규모</th></tr></thead>
+						<tbody>
+							<tr><td class="num">1</td><td><code>gatesGreen</code> 하드코딩 제거 <span class="size">F3</span></td><td class="ref">eval-playwright.mjs:360,365,369</td><td class="num">30분</td></tr>
+							<tr><td class="num">2</td><td>debate stepId 필터 + freshness phaseSeq 강화 <span class="size">F6</span></td><td class="ref">loop.mjs:117 · done-gate.mjs:299</td><td class="num">소</td></tr>
+							<tr><td class="num">3</td><td>빈 병합 차단 <span class="size">F2</span></td><td class="ref">git-flow.mjs</td><td class="num">소</td></tr>
+							<tr><td class="num">4</td><td>eval-scenario 를 verify 에 배선 + CI 편입 <span class="size">F4</span></td><td class="ref">loop.mjs · ci.yml</td><td class="num">소</td></tr>
+							<tr><td class="num">5</td><td>verify/merge 실패 카운터 + 에스컬레이션 <span class="size">F6</span></td><td class="ref">loop.mjs · state.mjs</td><td class="num">중</td></tr>
+							<tr><td class="num">6</td><td>페이즈 산출물 게이트 <span class="size">F1</span></td><td class="ref">loop.mjs + lib/artifact-gate.mjs</td><td class="num">중</td></tr>
+						</tbody>
+					</table>
+				</div>
+
+				<p><strong class="mono" style="color:var(--p1)">P1</strong> — 품질 신호를 실제로 만들기.</p>
+				<div class="scroll">
+					<table>
+						<thead><tr><th class="num">#</th><th>작업</th><th class="num">규모</th></tr></thead>
+						<tbody>
+							<tr><td class="num">7</td><td>check-arch 4종 규칙 확장 <span class="size">F9 · ROI 최고</span></td><td class="num">중</td></tr>
+							<tr><td class="num">8</td><td><code>.claude/settings.json</code> + hooks 4종 <span class="size">F11</span></td><td class="num">소</td></tr>
+							<tr><td class="num">9</td><td>CI matrix(Windows) + e2e 잡 <span class="size">F10</span></td><td class="num">소</td></tr>
+							<tr><td class="num">10</td><td><code>&lt;id&gt;.verdict.json</code> 스키마 + 루브릭 합성 <span class="size">F3</span></td><td class="num">중</td></tr>
+							<tr><td class="num">11</td><td>협의체 실행 가능성 실측 후 모델 정합 <span class="size">F7</span></td><td class="num">중</td></tr>
+							<tr><td class="num">12</td><td><code>harness/plan.json</code> + 수용기준 추적성 <span class="size">F5</span></td><td class="num">대</td></tr>
+						</tbody>
+					</table>
+				</div>
+
+				<p><strong class="mono" style="color:var(--p2)">P2</strong> — 운영·유지보수.</p>
+				<div class="scroll">
+					<table>
+						<thead><tr><th class="num">#</th><th>작업</th></tr></thead>
+						<tbody>
+							<tr><td class="num">13</td><td>Notion 코드화(<code>notion-hub.mjs</code>) + 죽은 코드 제거 + 문서 정합 <span class="size">F8</span></td></tr>
+							<tr><td class="num">14</td><td><code>report.mjs</code> + <code>metrics.ndjson</code> + 예산 가드 <span class="size">F12</span></td></tr>
+							<tr><td class="num">15</td><td>테스트 강제 휴리스틱 + 시크릿 스캔 게이트 <span class="size">F13 · F14</span></td></tr>
+							<tr><td class="num">16</td><td>잔여 백로그 2건 — SegmentedControl <code>clickText</code> 수정 · <code>App.tsx</code> 헤더 Container 정렬</td></tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<!-- 06 원칙 -->
+			<section id="principle">
+				<h2>06 — Principle</h2>
+				<p class="title">관통하는 설계 원칙 제안</p>
+
+				<p>
+					지금까지의 원칙은 <strong>"게이트·시퀀싱·기록 = 코드 / 토론·선택 = LLM"</strong> 이었습니다.
+					좋은 원칙인데, 실패는 전부 그 경계 <strong>바깥의 제3영역</strong>에서 났습니다.
+				</p>
+
+				<div class="thesis">
+					<p><strong>산출물의 존재와 신선도는 코드가 검증한다. 산출물의 내용만 LLM 이 만든다.</strong></p>
+				</div>
+
+				<p>
+					md 에 ⛔ 를 붙이는 대신 이렇게 물으십시오 —
+					<strong>"이 지시를 안 지켰을 때 코드가 알아챌 수 있는 파일 흔적이 무엇인가?"</strong>
+					답이 있으면 게이트로 옮기고, 없으면 그 지시는 실효성이 없으니 산출물 스키마부터 설계해야 합니다.
+					현재 <code>run-cycle.md</code> 의 ⛔ 5개 중 4개는 이 방법으로 코드화할 수 있습니다.
+				</p>
+			</section>
+
+			<!-- 07 부수 -->
+			<section id="misc">
+				<h2>07 — Housekeeping</h2>
+				<p class="title">부수 사항</p>
+				<ul class="tight">
+					<li><strong>작업트리 미커밋</strong> — <code>notion-storyboard.mjs</code>·selftest 가 untracked, 백로그 md 가 삭제 상태입니다. 정리 커밋을 권장드립니다.</li>
+					<li><strong>self-test 목록 3중 불일치</strong> — <code>README.md:63-73</code> 은 11종, CI 는 12종, 실제 파일은 13종입니다. 단일 소스로 통일이 필요합니다.</li>
+				</ul>
+
+				<div class="closing">
+					<p>추천하는 착수 순서입니다. 앞의 두 개는 각각 30분·1시간 규모라 오늘 안에 끝납니다.</p>
+					<div class="next">
+						<span class="step"><b>P0-1</b> gatesGreen 버그</span>
+						<span class="arrow">→</span>
+						<span class="step"><b>P0-2</b> stale 평가 · 라이브락</span>
+						<span class="arrow">→</span>
+						<span class="step"><b>P0</b> 전체</span>
+						<span class="arrow">→</span>
+						<span class="step"><b>P1-7</b> check-arch 확장</span>
+					</div>
+				</div>
+			</section>
+		</main>
+	</div>
+</div>

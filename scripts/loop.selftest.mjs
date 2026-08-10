@@ -9,12 +9,20 @@
 // 임시 cwd 에는 scripts/done-gate.mjs / scripts/git-flow.mjs 가 없으므로
 // verify/merge 결정적 페이즈는 no-op 통과 처리되어, 시퀀싱만 순수하게 검증됩니다.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { computeTransition, MAX_REWORK, PHASE_ORDER } from './loop.mjs';
+import {
+	classifyFailure,
+	computeFailureRouting,
+	computeTransition,
+	MAX_ESCALATION,
+	MAX_PHASE_RETRY,
+	MAX_REWORK,
+	PHASE_ORDER,
+} from './loop.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -233,6 +241,101 @@ try {
 } finally {
 	try {
 		rmSync(tmpDirC, { recursive: true, force: true });
+	} catch {
+		// 정리 실패는 결과에 영향 없음
+	}
+}
+
+// ── 시나리오 D: 결정적 페이즈 실패 → 재시도 → 결함분류 되돌림 → blocked (라이브락 제거) ──
+console.log('');
+console.log('=== loop selftest D: 실패 라우팅(재시도→되돌림→blocked) ===');
+
+// (D-1) classifyFailure — 사내 조직 가이드의 3분류(설계결함/구현결함/검증결함) 매핑
+{
+	const arch = classifyFailure('verify', { passed: false, gates: [{ name: 'check-arch', ok: false }, { name: 'lint', ok: true }] });
+	check('D: check-arch 실패 → 설계결함 → design 으로 되돌림', arch.kind === '설계결함' && arch.nextPhase === 'design');
+
+	const impl = classifyFailure('verify', { passed: false, gates: [{ name: 'test', ok: false }, { name: 'typecheck', ok: false }] });
+	check('D: test/typecheck 실패 → 구현결함 → implement 로 되돌림', impl.kind === '구현결함' && impl.nextPhase === 'implement');
+
+	const evalDefect = classifyFailure('merge', { passed: true, gates: [{ name: 'test', ok: true }] });
+	check('D: merge 실패인데 게이트 green → 검증결함 → evaluate 로 되돌림', evalDefect.kind === '검증결함' && evalDefect.nextPhase === 'evaluate');
+
+	const unknown = classifyFailure('verify', null);
+	check('D: 게이트 실측 없음 → 구현결함으로 보수적 분류', unknown.kind === '구현결함' && unknown.nextPhase === 'implement');
+}
+
+// (D-2) computeFailureRouting — 재시도/에스컬레이션/항복 경계
+{
+	const cls = { nextPhase: 'implement' };
+	const r1 = computeFailureRouting({ phase: 'verify', failCount: 1, escalations: 0, classification: cls });
+	check('D: 실패 1회 → retry(같은 페이즈)', r1.action === 'retry' && r1.nextPhase === 'verify');
+
+	const r3 = computeFailureRouting({ phase: 'verify', failCount: MAX_PHASE_RETRY, escalations: 0, classification: cls });
+	check(`D: 실패 ${MAX_PHASE_RETRY}회 → escalate(분류가 지목한 페이즈)`, r3.action === 'escalate' && r3.nextPhase === 'implement' && r3.nextEscalations === 1);
+
+	const rBlocked = computeFailureRouting({ phase: 'verify', failCount: MAX_PHASE_RETRY, escalations: MAX_ESCALATION, classification: cls });
+	check(`D: 에스컬레이션 ${MAX_ESCALATION} 초과 → blocked(항복)`, rBlocked.action === 'blocked');
+}
+
+// (D-3) 통합: 항상 실패하는 done-gate 스텁 → 재시도·되돌림을 거쳐 반드시 blocked 로 종착 (무한 루프 없음)
+const tmpDirD = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-fail-'));
+try {
+	mkdirSync(path.join(tmpDirD, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpDirD, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpDirD, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	// 항상 실패하는 done-gate 스텁 — verify 가 매번 탈락한다.
+	writeFileSync(path.join(tmpDirD, 'scripts', 'done-gate.mjs'), 'process.exit(1);\n', 'utf8');
+
+	const statePathD = stateFilePath(tmpDirD);
+	const executedD = [];
+	const firstD = invokeLoop(tmpDirD, ['--init', '01-fail']);
+	const exD0 = /executed:\s*([a-z]+)/.exec(firstD.stdout);
+	if (exD0) executedD.push(exD0[1]);
+
+	let stD = readState(statePathD);
+	let guardD = 0;
+	let lastCode = 0;
+	while (stD.status === 'running' && guardD < 80) {
+		const r = invokeLoop(tmpDirD);
+		lastCode = r.code;
+		const ex = /executed:\s*([a-z]+)/.exec(r.stdout);
+		if (ex) executedD.push(ex[1]);
+		stD = readState(statePathD);
+		guardD++;
+	}
+
+	check('D: 무한 루프 없이 종착(80회 이내)', guardD < 80);
+	check('D: 최종 status=blocked (항복 조건 작동)', stD.status === 'blocked');
+	check('D: blockedReason 기록됨', typeof stD.blockedReason === 'string' && stD.blockedReason.length > 0);
+	check('D: blocked 시 exit code 3 (조용히 지나치지 않음)', lastCode === 3);
+	check(`D: 에스컬레이션이 한도(${MAX_ESCALATION})를 넘어서 멈춤`, (stD.escalations ?? 0) > MAX_ESCALATION);
+	// verify 가 여러 번 실행되고, 되돌림으로 implement 도 재실행되었는지
+	check('D: verify 가 반복 실행됨', executedD.filter((p) => p === 'verify').length >= MAX_PHASE_RETRY);
+	check('D: 되돌림으로 implement 가 재실행됨', executedD.filter((p) => p === 'implement').length >= 2);
+	// 오류 로그가 남았는지 (사람이 원인을 볼 수 있어야 함)
+	let errFiles = [];
+	try {
+		errFiles = readdirSync(path.join(tmpDirD, 'harness', 'errors')).filter((f) => f.endsWith('.md'));
+	} catch {
+		errFiles = [];
+	}
+	check('D: blocked 사유가 harness/errors/ 에 기록됨', errFiles.length > 0);
+
+	// (D-4) --resume 으로 재개하면 running 으로 돌아오고 카운터가 초기화된다
+	const resumed = invokeLoop(tmpDirD, ['--resume']);
+	const stR = readState(statePathD);
+	check('D: --resume 후 blocked 해제', stR.status !== 'blocked' || resumed.code === 3);
+	check('D: --resume 후 escalations 초기화', (stR.escalations ?? 0) <= 1);
+} catch (err) {
+	failures.push(`D 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpDirD, { recursive: true, force: true });
 	} catch {
 		// 정리 실패는 결과에 영향 없음
 	}

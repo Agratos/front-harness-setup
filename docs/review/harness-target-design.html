@@ -1,0 +1,662 @@
+<title>하네스 목표 설계 — 알아서 개발하는 하네스로</title>
+<style>
+	:root {
+		--bg: #edeff2;
+		--surface: #ffffff;
+		--surface-2: #f4f6f8;
+		--ink: #12161b;
+		--ink-2: #4e5a66;
+		--ink-3: #7c8894;
+		--line: #d3d9df;
+		--line-strong: #b3bdc6;
+		--accent: #2f4858;
+		--p0: #a8342a;
+		--p1: #8a6008;
+		--p2: #5f6b76;
+		--ok: #2a6249;
+		--code-bg: #f1f4f6;
+		--term-bg: #1b2229;
+		--term-ink: #d9e0e6;
+		--term-dim: #7d8994;
+		--term-ok: #79c9a0;
+		--term-bad: #e08a7e;
+		--term-key: #8fb8cd;
+
+		--sans: "Pretendard", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, -apple-system, sans-serif;
+		--mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", "D2Coding", monospace;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:root:not([data-theme="light"]) {
+			--bg: #0f1317;
+			--surface: #161b21;
+			--surface-2: #1b2129;
+			--ink: #e6eaee;
+			--ink-2: #a2aeb9;
+			--ink-3: #75828e;
+			--line: #262e36;
+			--line-strong: #3a454f;
+			--accent: #93b8cb;
+			--p0: #e28377;
+			--p1: #d5a64b;
+			--p2: #9aa7b2;
+			--ok: #6dbf9b;
+			--code-bg: #1b2129;
+			--term-bg: #0a0e12;
+			--term-ink: #d2dae1;
+		}
+	}
+
+	:root[data-theme="dark"] {
+		--bg: #0f1317;
+		--surface: #161b21;
+		--surface-2: #1b2129;
+		--ink: #e6eaee;
+		--ink-2: #a2aeb9;
+		--ink-3: #75828e;
+		--line: #262e36;
+		--line-strong: #3a454f;
+		--accent: #93b8cb;
+		--p0: #e28377;
+		--p1: #d5a64b;
+		--p2: #9aa7b2;
+		--ok: #6dbf9b;
+		--code-bg: #1b2129;
+		--term-bg: #0a0e12;
+		--term-ink: #d2dae1;
+	}
+
+	* { box-sizing: border-box; }
+
+	body {
+		margin: 0;
+		background: var(--bg);
+		color: var(--ink);
+		font-family: var(--sans);
+		font-size: 16px;
+		line-height: 1.75;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	code, .mono { font-family: var(--mono); font-variant-ligatures: none; }
+
+	.wrap { max-width: 1140px; margin: 0 auto; padding: 0 24px 96px; }
+
+	.masthead { border-bottom: 2px solid var(--ink); padding: 56px 0 20px; margin-bottom: 40px; }
+	.eyebrow {
+		font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+		text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px;
+	}
+	.masthead h1 {
+		font-size: clamp(30px, 4.6vw, 46px); line-height: 1.18; letter-spacing: -0.02em;
+		font-weight: 800; margin: 0 0 12px; text-wrap: balance;
+	}
+	.masthead .lede { font-size: 17px; color: var(--ink-2); margin: 0; max-width: 62ch; }
+	.meta {
+		display: flex; flex-wrap: wrap; gap: 8px 22px; font-family: var(--mono);
+		font-size: 12.5px; color: var(--ink-3); margin-top: 22px;
+	}
+	.meta b { color: var(--ink-2); font-weight: 600; }
+
+	.layout { display: block; }
+	@media (min-width: 1000px) {
+		.layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 56px; align-items: start; }
+	}
+	.toc { display: none; }
+	@media (min-width: 1000px) {
+		.toc { display: block; position: sticky; top: 32px; border-top: 1px solid var(--line-strong); padding-top: 14px; }
+	}
+	.toc h2 {
+		font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+		color: var(--ink-3); margin: 0 0 12px; font-weight: 500;
+	}
+	.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+	.toc a {
+		display: flex; gap: 9px; align-items: baseline; text-decoration: none; color: var(--ink-2);
+		font-size: 13.5px; line-height: 1.5; padding: 3px 0; border-bottom: 1px solid transparent;
+	}
+	.toc a:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+	.toc a .num { font-family: var(--mono); font-size: 11px; color: var(--ink-3); min-width: 15px; }
+
+	main { min-width: 0; }
+	section { margin-bottom: 68px; scroll-margin-top: 24px; }
+	section > h2 {
+		font-size: 13px; font-family: var(--mono); letter-spacing: 0.13em; text-transform: uppercase;
+		color: var(--accent); font-weight: 600; margin: 0 0 6px;
+	}
+	section > .title {
+		font-size: clamp(22px, 2.8vw, 28px); font-weight: 750; letter-spacing: -0.015em;
+		margin: 0 0 24px; padding-bottom: 14px; border-bottom: 1px solid var(--line-strong); text-wrap: balance;
+	}
+	h3.sub {
+		font-size: 18px; font-weight: 700; letter-spacing: -0.01em; margin: 34px 0 12px;
+		padding-left: 12px; border-left: 3px solid var(--accent);
+	}
+	p { margin: 0 0 16px; max-width: 72ch; }
+	.dim { color: var(--ink-2); }
+
+	.thesis {
+		background: var(--surface); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent);
+		padding: 22px 26px; margin: 26px 0;
+	}
+	.thesis p { margin: 0; font-size: 17.5px; }
+	.thesis p + p { margin-top: 12px; }
+
+	/* 터미널 목업 */
+	.term {
+		background: var(--term-bg); border: 1px solid var(--line-strong); margin: 0 0 8px;
+		overflow-x: auto; padding: 18px 20px;
+	}
+	.term pre {
+		margin: 0; font-family: var(--mono); font-size: 13px; line-height: 1.72;
+		color: var(--term-ink); white-space: pre;
+	}
+	.term .d { color: var(--term-dim); }
+	.term .k { color: var(--term-key); }
+	.term .g { color: var(--term-ok); }
+	.term .r { color: var(--term-bad); }
+	.term .p { color: var(--term-dim); }
+	.cap { font-size: 13.5px; color: var(--ink-3); margin: 0 0 26px; }
+
+	pre.plain {
+		background: var(--code-bg); border: 1px solid var(--line); padding: 14px 16px; overflow-x: auto;
+		font-family: var(--mono); font-size: 13px; line-height: 1.65; margin: 0 0 16px;
+	}
+	pre.plain .cm { color: var(--ink-3); }
+	code {
+		background: var(--code-bg); border: 1px solid var(--line); padding: 0.5px 5px;
+		font-size: 0.875em; white-space: nowrap;
+	}
+	pre code { background: none; border: 0; padding: 0; white-space: pre; font-size: 1em; }
+
+	ul.tight { margin: 0 0 16px; padding-left: 20px; }
+	ul.tight li { margin-bottom: 6px; }
+	ul.tight li::marker { color: var(--ink-3); }
+
+	.scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--line); background: var(--surface); }
+	table { border-collapse: collapse; width: 100%; min-width: 480px; font-size: 14.5px; }
+	th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+	thead th {
+		font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.11em; text-transform: uppercase;
+		color: var(--ink-3); font-weight: 500; border-bottom: 1px solid var(--line-strong);
+		background: var(--surface-2); white-space: nowrap;
+	}
+	tbody tr:last-child td { border-bottom: 0; }
+	td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+	td.was { color: var(--ink-3); }
+	td.now { color: var(--ok); font-weight: 600; }
+	.size { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+
+	/* 축 카드 */
+	.axis { border: 1px solid var(--line); background: var(--surface); margin-bottom: 20px; }
+	.axis > header {
+		padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--surface-2);
+		display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+	}
+	.axis > header .ax {
+		font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+		color: var(--accent); font-weight: 600;
+	}
+	.axis > header h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+	.axis > header .goal { font-size: 13.5px; color: var(--ink-3); }
+	.axis .items { display: flex; flex-direction: column; }
+	.axis .item { padding: 16px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+	.axis .item:last-child { border-bottom: 0; }
+	@media (min-width: 760px) { .axis .item { grid-template-columns: 168px minmax(0, 1fr); gap: 22px; } }
+	.axis .item .name { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.6; }
+	.axis .item .body { font-size: 14.5px; color: var(--ink-2); }
+	.axis .item .body b { color: var(--ink); font-weight: 650; }
+
+	/* 단계 */
+	.stage { border-top: 1px solid var(--line); padding: 22px 0; display: grid; gap: 12px; }
+	@media (min-width: 760px) { .stage { grid-template-columns: 130px minmax(0, 1fr); gap: 28px; } }
+	.stage:first-of-type { border-top: 1px solid var(--line-strong); }
+	.stage .mark { display: flex; flex-direction: column; gap: 4px; }
+	.stage .n {
+		font-family: var(--mono); font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1;
+	}
+	.stage .cost { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.04em; }
+	.stage h3 { margin: 0 0 8px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+	.stage .gain {
+		margin-top: 10px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line);
+		font-size: 14px;
+	}
+	.stage .gain b { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ok); display: block; margin-bottom: 3px; }
+	.stage ul { margin: 0; }
+
+	.warn { border: 1px solid var(--line-strong); border-left: 3px solid var(--p1); background: var(--surface); padding: 20px 24px; }
+	.warn h3 { margin: 0 0 10px; font-size: 16px; font-weight: 700; }
+	.warn p:last-child { margin-bottom: 0; }
+
+	.closing { border-top: 2px solid var(--ink); padding-top: 22px; margin-top: 12px; }
+
+	a { color: var(--accent); }
+	a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+	@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+	<header class="masthead">
+		<p class="eyebrow">Target Design · harness-setup v3</p>
+		<h1>알아서 개발하는 하네스로<br />무엇을 어떻게 바꿔야 하나</h1>
+		<p class="lede">
+			"사용하기 쉽게"와 "완벽하게 자율로"는 보통 상충하지만, 이 하네스에서는 해법이 같습니다.
+			오케스트레이터가 <strong>기억하고 지켜야 하는 것</strong>을 전부 코드로 옮기면 둘 다 해결됩니다.
+		</p>
+		<div class="meta">
+			<span><b>전제</b> 진단 문서의 발견 14건</span>
+			<span><b>목표</b> md 준수 의존 제거 · 커맨드 3개 · 요구사항 기반 판정</span>
+			<span><b>기간</b> 5단계 · 약 8~12일</span>
+		</div>
+	</header>
+
+	<div class="layout">
+		<nav class="toc" aria-label="목차">
+			<h2>목차</h2>
+			<ol>
+				<li><a href="#answer"><span class="num">01</span><span>한 줄 답</span></a></li>
+				<li><a href="#ux"><span class="num">02</span><span>목표 사용 흐름</span></a></li>
+				<li><a href="#order"><span class="num">03</span><span>작업 지시서</span></a></li>
+				<li><a href="#axes"><span class="num">04</span><span>세 축의 변경</span></a></li>
+				<li><a href="#delete"><span class="num">05</span><span>버리는 것</span></a></li>
+				<li><a href="#path"><span class="num">06</span><span>전환 경로</span></a></li>
+				<li><a href="#residual"><span class="num">07</span><span>남는 위험</span></a></li>
+			</ol>
+		</nav>
+
+		<main>
+			<!-- 01 -->
+			<section id="answer">
+				<h2>01 — The answer</h2>
+				<p class="title">한 줄로 답하면</p>
+
+				<div class="thesis">
+					<p>
+						<strong>드라이버가 "다음에 뭘 해야 하는지" 를 말해주고, "그걸 했는지" 를 검사해야 합니다.</strong>
+					</p>
+					<p class="dim">
+						지금은 드라이버가 순서만 세고, 무엇을 할지는 md 를 읽어서 알아내고, 했는지는 아무도 안 봅니다.
+					</p>
+				</div>
+
+				<p>
+					이 한 문장이 두 요구를 동시에 만족시킵니다.
+					<b>사용하기 쉬워지는 이유</b> — 오케스트레이터가 매 사이클 900줄짜리 md 뭉치를 읽고 규약을 암기할 필요가 없어집니다.
+					필요한 지시만 그때그때 받습니다.
+					<b>자율성이 올라가는 이유</b> — 깜빡하거나 건너뛰면 드라이버가 전진을 거부합니다.
+					"⛔ 하지 마세요" 를 md 에 적는 대신 코드가 막습니다.
+				</p>
+
+				<p>
+					지금 하네스에서 실패한 모든 사례(빈 병합, 스크린샷 미확인, Notion 미갱신, 폼 버그 통과)는
+					전부 <strong>"에이전트가 md 지시를 안 지킴"</strong> 이었습니다.
+					지키게 만드는 게 아니라, <strong>안 지키면 진행이 안 되게</strong> 만드는 것이 설계의 전부입니다.
+				</p>
+			</section>
+
+			<!-- 02 -->
+			<section id="ux">
+				<h2>02 — Ergonomics</h2>
+				<p class="title">목표 사용 흐름 — 커맨드 3개</p>
+
+				<p>
+					현재는 <code>/copy-project</code> → <code>cd</code> → <code>yarn install</code> →
+					<code>/start-project</code> → <code>/run-cycle</code> ×N → <code>/evaluate</code> →
+					<code>/status</code> 입니다. "알아서 개발" 의 사용자 경험은 이래야 합니다.
+				</p>
+
+				<div class="term">
+<pre><span class="d">$</span> <span class="k">/new</span> <span class="d">../my-app</span>
+  <span class="d">복사 → 설치 → git·Notion 연동 확인 → 심층 인터뷰 → plan.json 확정 → main 시드</span>
+
+<span class="d">$</span> <span class="k">/go</span>
+  <span class="d">status=done 까지 자율 진행. 페이즈마다 지시서 → 작업 → 검사 → 전진</span>
+  <span class="d">막히면 멈추고 이유를 말함 (영원히 돌지 않음)</span>
+
+<span class="d">$</span> <span class="k">/report</span>
+  <span class="d">현재 상태 · 수용기준 달성률 · 사이클별 소요 · 미해결 이슈</span></pre>
+				</div>
+				<p class="cap">부분 실행이 필요할 때만 <code>/go --steps=2</code>, <code>/go --phase</code>(한 페이즈만) 를 씁니다.</p>
+
+				<p>
+					<code>/go</code> 는 내부에서 <code>harness next</code>(지시서 받기) → 작업 →
+					<code>harness done</code>(검사·전진) 을 반복합니다.
+					현재 <code>/run-cycle</code> 이 하던 일과 같지만, <strong>규약이 md 가 아니라 지시서로 배달</strong>된다는 점이 다릅니다.
+				</p>
+			</section>
+
+			<!-- 03 -->
+			<section id="order">
+				<h2>03 — The mechanism</h2>
+				<p class="title">핵심 장치: 작업 지시서</p>
+
+				<p>
+					설계의 심장입니다. 드라이버가 현재 상태 · <code>plan.json</code> · 페이즈 계약을 조합해
+					<strong>이번 한 페이즈에 필요한 것만</strong> 출력합니다.
+				</p>
+
+				<div class="term">
+<pre><span class="d">$</span> node harness next
+
+<span class="d">┌</span> <span class="k">CYCLE 3</span> <span class="d">·</span> step 2/4 <span class="k">02-book-list</span> <span class="d">·</span> phase <span class="k">implement</span> <span class="d">·</span> rework 1/5
+<span class="d">│</span>
+<span class="d">├</span> 해야 할 일
+<span class="d">│</span>    features/book-list 구현 — 아래 수용기준 3건을 만족시킬 것
+<span class="d">│</span>
+<span class="d">├</span> 수용기준 <span class="d">(plan.json · 이 값이 곧 합격 조건)</span>
+<span class="d">│</span>    <span class="k">AC-1</span>  목록이 등록 순으로 정렬돼 표시된다
+<span class="d">│</span>    <span class="k">AC-2</span>  상태 필터 변경 시 목록·통계가 즉시 반영된다
+<span class="d">│</span>    <span class="k">AC-3</span>  0건일 때 빈 상태 안내가 보인다
+<span class="d">│</span>
+<span class="d">├</span> 투입 에이전트 <span class="d">(기본값 — CEO 가 가감 가능)</span>
+<span class="d">│</span>    ui · entity-modeler        감독: architect
+<span class="d">│</span>
+<span class="d">├</span> 산출물 <span class="d">— 하나라도 없으면 전진 거부</span>
+<span class="d">│</span>    <span class="r">✗</span> step/02-book-list 브랜치 커밋 ≥ 1
+<span class="d">│</span>    <span class="r">✗</span> src/ diff ≠ 0
+<span class="d">│</span>    <span class="g">✓</span> harness/decisions/c3-design.md
+<span class="d">│</span>
+<span class="d">├</span> 참고 <span class="d">— 이번 페이즈에만 필요한 문서</span>
+<span class="d">│</span>    docs/fsd/features.md · .claude/agents/ui.md
+<span class="d">│</span>
+<span class="d">└</span> 끝나면: node harness done</pre>
+				</div>
+				<p class="cap">읽어야 할 것이 이 30줄로 줄어듭니다. 참고 문서도 이번 페이즈에 해당하는 것만 링크됩니다.</p>
+
+				<p>그리고 검사는 이렇게 거부합니다 — <strong>이유와 다음 행동이 항상 붙습니다.</strong></p>
+
+				<div class="term">
+<pre><span class="d">$</span> node harness done
+
+<span class="r">✗ 전진 거부</span> <span class="d">— implement 산출물 미충족</span>
+   src/ diff 가 비어 있습니다 <span class="d">(step/02-book-list ↔ main)</span>
+   <span class="d">→</span> 구현을 커밋한 뒤 다시 실행하세요.   재시도 <span class="k">1/3</span>
+      <span class="d">3회 초과 시 debate 로 보내 원인을 협의합니다</span></pre>
+				</div>
+
+				<h3 class="sub">이 장치가 대체하는 것</h3>
+				<div class="scroll">
+					<table>
+						<thead><tr><th>지금</th><th>바뀐 뒤</th></tr></thead>
+						<tbody>
+							<tr><td class="was">매 사이클 <code>run-cycle.md</code> 151줄 정독</td><td class="now">지시서 30줄</td></tr>
+							<tr><td class="was"><code>agent-roster.md</code> 를 보고 subset 판단</td><td class="now">기본 subset 이 지시서에 인쇄됨 (CEO 가 가감)</td></tr>
+							<tr><td class="was">⛔ 5개를 기억하고 지키기</td><td class="now">산출물 체크리스트가 코드로 검사됨</td></tr>
+							<tr><td class="was">"이번엔 뭘 평가해야 하지" 를 매번 재구성</td><td class="now">AC 목록이 곧 채점표</td></tr>
+							<tr><td class="was">실패하면 같은 자리 무한 반복</td><td class="now">재시도 한도 + 원인별 분기 + 항복 조건</td></tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<!-- 04 -->
+			<section id="axes">
+				<h2>04 — Changes</h2>
+				<p class="title">세 축의 변경</p>
+				<p>지시서가 성립하려면 아래 세 축이 함께 들어가야 합니다. 축 하나만 해도 개선은 되지만, 셋이 맞물릴 때 자율성이 생깁니다.</p>
+
+				<div class="axis">
+					<header>
+						<span class="ax">축 A</span>
+						<h3>강제 — 코드가 검사한다</h3>
+						<span class="goal">건너뛰기·가짜 통과를 물리적으로 불가능하게</span>
+					</header>
+					<div class="items">
+						<div class="item">
+							<div class="name">phases.mjs<br />페이즈 계약</div>
+							<div class="body">
+								페이즈별 <b>투입 에이전트 · 산출물 · 검사 조건 · 참고 문서</b>를 한 파일에 선언합니다.
+								지금 <code>run-cycle.md</code>·<code>agent-roster.md</code>·<code>AGENTS.md</code> 표에 흩어진 규칙이
+								<b>하나의 실행 가능한 정의</b>로 모입니다. 지시서도 검사도 여기서 생성됩니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">cycleId<br />신선도 스탬프</div>
+							<div class="body">
+								모든 산출물이 <code>{cycleId, stepId, phaseSeq}</code> 를 달고, 드라이버가 stale 을 거부합니다.
+								<code>cycleId = stepId#reworkCount</code> 로 두면 <b>같은 step 의 이전 재작업 회차 평가가
+								재사용되는 현재 구멍(F6)이 닫힙니다.</b>
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">항상 전진<br />라이브락 제거</div>
+							<div class="body">
+								모든 실패는 카운터를 올리고 <b>다른 페이즈로</b> 보냅니다. 같은 자리에 머무르지 않습니다.
+								게이트 실패 → implement / 평가 stale → evaluate / N회 초과 → vote →
+								그래도 안 되면 <b>blocked + 원인 리포트로 사람 호출</b>. 자율의 반대말은 정지가 아니라 무한 루프입니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">hooks<br />하네스 레벨 이중화</div>
+							<div class="body">
+								<code>Stop</code> 훅이 산출물 없이 턴이 끝나는 것을 막고, <code>SessionStart</code> 가 지시서를
+								자동 주입하고, <code>PreToolUse</code> 가 main 직접 커밋을 차단합니다.
+								<b>드라이버를 안 부르고 끝내는 경로까지</b> 덮습니다.
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="axis">
+					<header>
+						<span class="ax">축 B</span>
+						<h3>목적 — 무엇이 "완료"인가</h3>
+						<span class="goal">점수가 아니라 요구사항으로 판정</span>
+					</header>
+					<div class="items">
+						<div class="item">
+							<div class="name">plan.json<br />수용기준</div>
+							<div class="body">
+								인터뷰 결과가 step 별 <code>acceptance[]</code> 로 구조화되어 저장됩니다.
+								<b>지금은 요구사항이 어디에도 기계가 읽을 형태로 남지 않습니다.</b>
+								이게 있어야 "만든 게 요구를 충족했나" 를 물을 수 있습니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">AC → 시나리오<br />자동 연결</div>
+							<div class="body">
+								각 <code>acceptance</code> 는 <b>최소 1개의 E2E 단언과 짝지어져야</b> 합니다.
+								짝이 없는 AC 가 있으면 verify 가 거부합니다.
+								"테스트를 안 써도 통과" 와 "E2E 를 안 돌려도 통과" 가 동시에 닫힙니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">체크리스트 판정<br />점수제 폐지</div>
+							<div class="body">
+								합격 조건을 <b>"종합 90점"에서 "AC 전건 통과 + major 불만 0"</b> 으로 바꿉니다.
+								90 은 조작 가능하지만 <b>AC 5건 중 5건이 E2E 로 통과</b> 는 조작이 어렵습니다.
+								점수·히스테리시스는 리포트용 지표로 남기고 게이트에서는 뺍니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">verdict.json<br />주관 판정 구조화</div>
+							<div class="body">
+								스크린샷 육안 판정을 <b>증거(캡처 파일 + 영역) 필수</b>인 스키마로 받습니다.
+								verdict 없으면 done-gate FAIL — <b>"봤다고 치고 넘어가기"가 불가능</b>해집니다.
+								객관(코드)과 주관(에이전트)을 분리해 각각 강제합니다.
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="axis">
+					<header>
+						<span class="ax">축 C</span>
+						<h3>조작성 — 부담을 덜어낸다</h3>
+						<span class="goal">읽을 것과 기억할 것을 줄여 실패율을 낮춤</span>
+					</header>
+					<div class="items">
+						<div class="item">
+							<div class="name">문서 다이어트</div>
+							<div class="body">
+								<b>실행 규칙은 코드로, md 는 "왜"만.</b> <code>run-cycle.md</code> 151줄은 지시서가 대체해 20줄로,
+								<code>notion-hub-layout.md</code> 354줄은 <code>notion-hub.mjs</code> 코드 + 스펙 50줄로 줄입니다.
+								읽는 분량이 곧 실패율입니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">Notion 코드화</div>
+							<div class="body">
+								LLM 은 <b>"무엇을 쓸지"</b> 만 정하고 <b>"어떻게 쓸지"</b>(relation 포맷·top-3 재작성·업로드)는
+								코드가 처리합니다. 3세대로 겹친 어댑터를 <code>reporter</code> 인터페이스 하나로 정리하면
+								Notion 없는 환경에서도 하네스가 돌아갑니다.
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">permissions 정리</div>
+							<div class="body">
+								<code>.claude/settings.json</code> 의 allowlist 로 <code>yarn *</code>·<code>node scripts/*</code>·
+								<code>git *</code> 프롬프트를 없앱니다. <b>무인 실행 중 멈추는 원인 하나가 사라집니다.</b>
+							</div>
+						</div>
+						<div class="item">
+							<div class="name">골든 픽스처 CI</div>
+							<div class="body">
+								작은 요구사항 세트로 하네스 전체를 헤드리스 실행하고 결과를 단언합니다.
+								지금처럼 실제 프로젝트로 매번 손으로 N차 테스트하지 않아도
+								<b>하네스를 고칠 때 회귀를 CI 가 잡습니다.</b>
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- 05 -->
+			<section id="delete">
+				<h2>05 — Subtraction</h2>
+				<p class="title">더하는 것만큼 버리는 것</p>
+				<p>"사용하기 쉽게"의 절반은 삭제입니다. 아래는 이번 설계로 <strong>없어지는</strong> 것들입니다.</p>
+
+				<div class="scroll">
+					<table>
+						<thead><tr><th>항목</th><th class="num">지금</th><th class="num">목표</th><th>대체</th></tr></thead>
+						<tbody>
+							<tr><td>사이클마다 읽는 md 분량</td><td class="num was">≈ 900줄</td><td class="num now">≈ 150줄</td><td>작업 지시서 + 해당 페이즈 문서만</td></tr>
+							<tr><td>슬래시 커맨드</td><td class="num was">6개</td><td class="num now">3개</td><td><code>/new</code> · <code>/go</code> · <code>/report</code></td></tr>
+							<tr><td><code>run-cycle.md</code> 의 ⛔ 마크</td><td class="num was">5개</td><td class="num now">0개</td><td>산출물 게이트가 코드로 검사</td></tr>
+							<tr><td>Notion 어댑터 세대</td><td class="num was">3개</td><td class="num now">1개</td><td><code>reporter</code> 인터페이스</td></tr>
+							<tr><td>합격 판정 기준</td><td class="num was">종합 90점 + 히스테리시스</td><td class="num now">AC 전건 통과</td><td>점수는 리포트 지표로만</td></tr>
+							<tr><td>죽은 코드</td><td class="num was"><code>upsertDashboard</code> 외</td><td class="num now">삭제</td><td>—</td></tr>
+						</tbody>
+					</table>
+				</div>
+
+				<p class="dim">
+					단, 버리면 안 되는 것 — 결정적 상태 기계 · 원자적 state · 멱등 재개 · git 안전장치 · self-test 문화.
+					이번 설계는 그 위에 얹는 것이지 갈아엎는 것이 아닙니다.
+				</p>
+			</section>
+
+			<!-- 06 -->
+			<section id="path">
+				<h2>06 — Path</h2>
+				<p class="title">전환 경로 — 5단계</p>
+				<p>
+					각 단계는 <strong>독립적으로 가치가 있고</strong>, 중간에 멈춰도 하네스가 지금보다 낫습니다.
+					순서는 안전망 → 계약 → 목적 → 조작성 → 정리입니다.
+				</p>
+
+				<div class="stage">
+					<div class="mark"><span class="n">1</span><span class="cost">약 1일</span></div>
+					<div>
+						<h3>안전망 — 새는 곳부터 막기</h3>
+						<ul class="tight">
+							<li><code>gatesGreen</code> 하드코딩 제거 <span class="size">30분</span></li>
+							<li>debate stepId 필터 + freshness 를 cycleId 단위로</li>
+							<li>빈 병합 차단 (커밋 수 + src diff 검사)</li>
+							<li>verify/merge 실패 카운터 + 원인별 분기</li>
+						</ul>
+						<div class="gain"><b>얻는 것</b>가짜 통과와 무한 루프가 사라집니다. 이후 단계의 전제 조건입니다.</div>
+					</div>
+				</div>
+
+				<div class="stage">
+					<div class="mark"><span class="n">2</span><span class="cost">2~3일</span></div>
+					<div>
+						<h3>계약 — 페이즈에 입출력을 부여</h3>
+						<ul class="tight">
+							<li><code>harness/phases.mjs</code> 신설 — 페이즈별 에이전트·산출물·검사·문서 선언</li>
+							<li><code>lib/artifact-gate.mjs</code> — 산출물 존재·신선도 검사</li>
+							<li><code>loop.mjs</code> 가 검사 통과 시에만 전진</li>
+							<li>eval-scenario 를 verify 에 배선 + CI 편입</li>
+						</ul>
+						<div class="gain"><b>얻는 것</b>페이즈 스킵이 불가능해집니다. 규칙이 md 3곳에서 코드 1곳으로 모입니다.</div>
+					</div>
+				</div>
+
+				<div class="stage">
+					<div class="mark"><span class="n">3</span><span class="cost">3~4일</span></div>
+					<div>
+						<h3>목적 — 요구사항으로 판정</h3>
+						<ul class="tight">
+							<li><code>harness/plan.json</code> — 인터뷰 결과를 step + acceptance 로 구조화</li>
+							<li>AC ↔ E2E 단언 매핑 강제 (짝 없는 AC 는 verify 거부)</li>
+							<li>합격 판정을 점수 → 체크리스트 소진으로 교체</li>
+							<li><code>verdict.json</code> 스키마 + 증거 필수화</li>
+						</ul>
+						<div class="gain"><b>얻는 것</b>"앱이 떴다" 가 아니라 <b>"요구를 충족했다"</b> 로 통과 기준이 바뀝니다. 여기가 자율성의 본체입니다.</div>
+					</div>
+				</div>
+
+				<div class="stage">
+					<div class="mark"><span class="n">4</span><span class="cost">2일</span></div>
+					<div>
+						<h3>조작성 — 지시서와 커맨드 3개</h3>
+						<ul class="tight">
+							<li><code>harness next</code> / <code>harness done</code> 구현 (phases.mjs + plan.json 조합)</li>
+							<li><code>.claude/settings.json</code> + hooks 4종</li>
+							<li>커맨드를 <code>/new</code>·<code>/go</code>·<code>/report</code> 로 통합</li>
+							<li><code>run-cycle.md</code> 등 실행 규칙 md 축약</li>
+						</ul>
+						<div class="gain"><b>얻는 것</b>매 사이클 읽는 분량이 1/6 로 줄고, 무인 실행이 프롬프트에 막히지 않습니다.</div>
+					</div>
+				</div>
+
+				<div class="stage">
+					<div class="mark"><span class="n">5</span><span class="cost">2~3일</span></div>
+					<div>
+						<h3>정리 — 유지보수 비용 낮추기</h3>
+						<ul class="tight">
+							<li>Notion 을 <code>reporter</code> 인터페이스로 통합 + 죽은 코드 삭제</li>
+							<li>check-arch 4종 규칙 확장 <span class="size">ROI 최고</span></li>
+							<li>골든 픽스처 CI + Windows matrix</li>
+							<li><code>report.mjs</code> + <code>metrics.ndjson</code> + 예산 가드</li>
+						</ul>
+						<div class="gain"><b>얻는 것</b>하네스를 고칠 때 회귀를 CI 가 잡고, 실패 패턴을 데이터로 봅니다.</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- 07 -->
+			<section id="residual">
+				<h2>07 — Honest limits</h2>
+				<p class="title">이 설계로도 해결되지 않는 것</p>
+
+				<div class="warn">
+					<h3>남는 것은 전부 "판단"입니다</h3>
+					<p>
+						설계의 목표는 <strong>판단이 좋아지는 것이 아니라, 판단이 반드시 일어나게 하는 것</strong>입니다.
+						아래 셋은 코드로 검증할 수 없고, 앞으로도 LLM 몫입니다.
+					</p>
+					<ul class="tight">
+						<li><b>구현 품질</b> — AC 를 만족하는 코드가 <em>좋은</em> 코드인지는 리뷰의 영역입니다.</li>
+						<li><b>시각 판정</b> — 캡처를 본 것은 강제할 수 있어도, "잘 보인다"는 판단 자체는 못 합니다.</li>
+						<li><b>요구사항 해석</b> — AC 를 잘못 뽑으면 전부 통과해도 원하는 물건이 안 나옵니다. 인터뷰 품질이 상한입니다.</li>
+					</ul>
+					<p class="dim">
+						그래서 <code>/new</code> 의 심층 인터뷰가 여전히 하네스에서 가장 중요한 단계이고,
+						지금처럼 생략 금지로 유지해야 합니다.
+					</p>
+				</div>
+
+				<div class="closing">
+					<p>
+						착수는 <strong>1단계</strong>부터를 권합니다. 하루면 끝나고, 여기까지만 해도
+						"평가가 통과했는데 실은 아무 일도 안 일어난" 사고가 사라집니다.
+						2·3단계가 실제 자율성을 만드는 구간이고, 4단계에서 체감 사용성이 바뀝니다.
+					</p>
+				</div>
+			</section>
+		</main>
+	</div>
+</div>

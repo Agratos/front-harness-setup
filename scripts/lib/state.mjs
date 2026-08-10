@@ -26,6 +26,32 @@ export function stateFilePath(repoRoot) {
 }
 
 /**
+ * 현재 step 식별자 (`step-<idx>`).
+ * @param {object|null} state
+ * @returns {string}
+ */
+export function stepIdOf(state) {
+	return `step-${state?.currentStepIdx ?? 0}`;
+}
+
+/**
+ * 현재 **사이클** 식별자 (`step-<idx>#<reworkCount>`).
+ *
+ * 왜 step 이 아니라 사이클인가: 한 step 은 재작업(rework)마다 구현→검증→평가를 다시 돈다.
+ * 신선도(freshness)를 step 단위로만 보면 **재작업 1회차의 평가가 3회차 merge 를 통과**시킨다
+ * (실측 결함). reworkCount 를 포함시켜 "이번 라운드의 평가"만 유효하게 만든다.
+ *
+ * 한 라운드 안에서 evaluate→debate→merge 는 reworkCount 가 바뀌지 않으므로 id 가 유지되고,
+ * debate 가 rework 판정을 내리는 순간(=다음 라운드 진입) 새 id 로 갈린다.
+ *
+ * @param {object|null} state
+ * @returns {string}
+ */
+export function cycleIdOf(state) {
+	return `${stepIdOf(state)}#${state?.reworkCount ?? 0}`;
+}
+
+/**
  * 페이즈 시퀀스를 입력받아 결정적(deterministic) checkpointToken 을 만든다.
  * 형식: `${phaseSeq}-${phase}-${counter}` (Math.random / Date 미사용).
  * counter 는 같은 (phaseSeq, phase) 조합의 재계산을 구분하기 위한 단조 카운터다.
@@ -52,6 +78,9 @@ function makeCheckpointToken(phaseSeq, phase, counter) {
  *   lastCommittedSha: string|null,
  *   scores: object,
  *   reworkCount: number,
+ *   failures: Record<string, number>,
+ *   escalations: number,
+ *   blockedReason: string|null,
  *   gateOverride: boolean,
  *   status: 'init'|'running'|'blocked'|'done'
  * }}
@@ -70,6 +99,14 @@ export function defaultState(planSteps = []) {
 		lastCommittedSha: null,
 		scores: {},
 		reworkCount: 0,
+		// 결정적 페이즈(verify/merge)의 **연속** 실패 횟수. 성공하면 그 페이즈 키가 0 으로 리셋된다.
+		// 한도(MAX_PHASE_RETRY)를 넘으면 loop 가 같은 자리에 머무르지 않고 원인별로 분기한다.
+		failures: {},
+		// 분기(에스컬레이션) 횟수. 한도(MAX_ESCALATION)를 넘으면 status='blocked' 로 항복한다.
+		// step 이 바뀌면 0 으로 초기화된다 — 무한 루프 방지의 마지막 안전장치.
+		escalations: 0,
+		// blocked 사유(사람이 읽는 한 줄). status!=='blocked' 면 null.
+		blockedReason: null,
 		// 투표 오버라이드: 5회 재작업 후 에이전트 투표가 "주관 임계(90점) 대체"를 의결하면
 		// true 가 되어 다음 merge 의 done-gate 가 결정적 게이트만 강제(주관 임계 우회)하게 한다.
 		// 새 step 으로 넘어가면 false 로 초기화된다 (step 마다 독립).

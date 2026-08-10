@@ -24,7 +24,48 @@
 | `scores`           | `object`                                     | 평가 차원별 점수 누적(예: `{ correctness: 8, design: 7 }`). 초기값 `{}`.                                                                           |
 | `reworkCount`      | `number`                                     | 현재 step 의 재작업(rework) 횟수. `loop.mjs` 가 `debate` 의 `rework` 판정마다 1 증가시키고 `implement` 로 되돌립니다. `MAX_REWORK(=5)` 도달 후에도 `rework` 면 `vote` 로 분기합니다. step 이 바뀌면(merge→다음 decompose) 0 으로 초기화됩니다. |
 | `gateOverride`     | `boolean`                                    | 투표 오버라이드 플래그. `vote` 페이즈를 마치면 `true` 가 되어 다음 `merge` 의 done-gate 가 `--vote-override`(주관 임계만 우회, 결정적 게이트는 유지)로 호출됩니다. 새 step 진입 시 `false` 로 초기화. 초기값 `false`. |
-| `status`           | `'init' \| 'running' \| 'blocked' \| 'done'` | 실행 전체 상태. 초기값 `'init'`.                                                                                                                   |
+| `failures`         | `Record<string, number>`                     | 결정적 페이즈(`verify`/`merge`)의 **연속** 실패 횟수. 성공하면 해당 키가 0 으로 리셋됩니다. `MAX_PHASE_RETRY(=3)` 도달 시 같은 자리에 머무르지 않고 결함 분류에 따라 되돌립니다. step 이 바뀌면 `{}` 로 초기화. |
+| `escalations`      | `number`                                     | 되돌림(에스컬레이션) 횟수. `MAX_ESCALATION(=3)` 초과 시 `status='blocked'` 로 항복합니다. step 이 바뀌면 0 으로 초기화. 초기값 `0`.                  |
+| `blockedReason`    | `string \| null`                             | `status='blocked'` 사유(사람이 읽는 한 줄). 상세는 `harness/errors/` 최신 항목. 그 외 상태에서는 `null`.                                            |
+| `status`           | `'init' \| 'running' \| 'blocked' \| 'done'` | 실행 전체 상태. 초기값 `'init'`. `blocked` 는 자동 복구 포기 상태이며 `node scripts/loop.mjs --resume` 으로만 해제됩니다.                            |
+
+### 사이클 식별자 (`cycleId`) — 신선도의 단위
+
+`cycleId = \`step-<currentStepIdx>#<reworkCount>\`` (`lib/state.mjs` 의 `cycleIdOf`).
+
+평가·게이트 산출물의 **신선도 판정 단위**입니다. 1세대는 `stepId` 만 비교했는데, 그러면 같은 step 안에서
+**재작업 1회차의 평가가 3회차 merge 를 통과**시키는 구멍이 남습니다(실측 결함). `reworkCount` 를 포함시켜
+"이번 라운드의 산출물"만 유효하게 만듭니다.
+
+- 한 라운드 안에서 `evaluate → debate → merge` 는 `reworkCount` 가 바뀌지 않아 id 가 유지됩니다.
+- `debate` 가 `rework` 판정을 내리는 순간 다음 라운드로 갈리며 이전 산출물은 전부 stale 이 됩니다.
+- 소비처: `done-gate` 의 평가 freshness, `loop` 의 debate 판정 근거, `harness/gate-status.json` 조회.
+
+### 실패 라우팅 — 라이브락 금지
+
+결정적 페이즈가 실패하면 **절대 같은 자리에 무한히 머무르지 않습니다**. 3단계로 처리합니다.
+
+| 단계 | 조건 | 동작 |
+| --- | --- | --- |
+| 재시도 | 연속 실패 < `MAX_PHASE_RETRY(3)` | 같은 페이즈 재실행 (일시적 실패 흡수) |
+| 되돌림 | 한도 도달 | **결함 분류**에 따라 `design`/`implement`/`evaluate` 로 전진, `escalations++` |
+| 항복 | `escalations > MAX_ESCALATION(3)` | `status='blocked'` + 사유 기록 + `harness/errors/` 기록, exit code 3 |
+
+**결함 분류**(사내 멀티에이전트 조직 가이드의 3분류를 따름) — 근거는 `harness/gate-status.json` 실측값:
+
+| 분류 | 판정 근거 | 되돌릴 페이즈 |
+| --- | --- | --- |
+| 설계결함 | `check-arch` 실패 (레이어/경계 위반 = 구조 문제) | `design` |
+| 구현결함 | `typecheck`/`lint`/`test` 실패 | `implement` |
+| 검증결함 | `merge` 실패인데 결정적 게이트는 green (평가 임계·stale) | `evaluate` |
+
+### `harness/gate-status.json` — 게이트 실측 결과
+
+`done-gate` 가 결정적 게이트를 돌린 뒤 결과를 남기는 파일입니다. `{ passed, gates[], cycleId, stepId, phaseSeq, createdAt }`.
+
+- **소비처 1** — 평가(`eval-playwright`)의 루브릭 항목 `q.gates-green`. 예전에는 `gatesGreen: true` 하드코딩이라 게이트가 깨져도 항상 만점(종합 8점)을 줬습니다(실측 버그). 이제 실측값을 읽습니다.
+- **소비처 2** — `loop` 의 결함 분류(위 표).
+- 사이클이 다르면 stale 로 무시하며, 이 경우 평가는 `q.gates-green` 을 **실패로** 처리합니다(모르면 만점을 주지 않는다).
 
 ---
 

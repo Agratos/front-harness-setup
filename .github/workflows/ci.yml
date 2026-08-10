@@ -36,7 +36,7 @@ jobs:
       - name: Test
         run: yarn test --run
 
-      # ── 하네스 자가검증 12종 ─────────────────────────────────────────
+      # ── 하네스 자가검증 13종 ─────────────────────────────────────────
       - name: Self-tests
         run: |
           node scripts/lib/state.selftest.mjs
@@ -50,4 +50,9 @@ jobs:
           node scripts/copy-project.selftest.mjs
           node scripts/notion-api.selftest.mjs
           node scripts/notion-storyboard.selftest.mjs
+          node scripts/eval-scenario.selftest.mjs
           node scripts/init-project.selftest.mjs
+
+      # ── 통합 스모크 데모 (초기 상태에서도 통과해야 함) ────────────────
+      - name: Integration demo
+        run: node scripts/demo.mjs

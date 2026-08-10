@@ -61,7 +61,7 @@ node scripts/demo.mjs                 # → 'DEMO: PASS', harness/report.md 채�
 
 ```bash
 yarn typecheck && yarn lint && yarn test:run && node scripts/check-arch.js
-node scripts/loop.selftest.mjs        # 드라이버 시퀀싱 + 재작업→투표 분기
+node scripts/loop.selftest.mjs        # 드라이버 시퀀싱 + 재작업→투표 분기 + 실패 라우팅→blocked
 node scripts/resume.selftest.mjs      # 멱등 재개(크래시 후 미커밋 페이즈 재실행)
 node scripts/git-flow.selftest.mjs    # git-flow (임시 repo)
 node scripts/eval.selftest.mjs        # 평가/teardown/루브릭
@@ -70,7 +70,11 @@ node scripts/reset-project.selftest.mjs  # 제자리 초기화(멱등·Notion �
 node scripts/copy-project.selftest.mjs   # 복사 제외 필터·대상 검증
 node scripts/init-project.selftest.mjs      # Notion page id 추출
 node scripts/notion-api.selftest.mjs        # Notion flush 빌더·게이트
+node scripts/notion-storyboard.selftest.mjs # 스토리보드 업로드·첨부 게이트
+node scripts/eval-scenario.selftest.mjs     # 상호작용(E2E) 러너 스텝·단언
 ```
+
+> CI(`.github/workflows/ci.yml`)는 게이트 4종 + 위 self-test **13종** + `demo.mjs` 를 모두 실행합니다.
 
 ## 구조 개요
 

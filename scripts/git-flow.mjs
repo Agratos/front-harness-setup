@@ -217,6 +217,25 @@ function evaluateDoneGate(extraArgs) {
 	};
 }
 
+/**
+ * step 브랜치가 main 대비 **실제 작업물**을 갖고 있는지 확인한다.
+ *
+ * 왜 필요한가: `merge-step` 은 **커밋된 이력만** 병합한다. 구현 산출물을 커밋하지 않은 채
+ * merge 로 넘어가면 `--no-ff` 빈 병합이 되어, 게이트는 통과했는데 코드는 main 에 없는
+ * 상태가 된다(실측 사고). 문서에는 ⛔ 경고만 있었고 코드는 검사하지 않았다 — 이제 코드가 막는다.
+ *
+ * @param {string} branch step 브랜치명
+ * @returns {{commits:number, hasDiff:boolean, ok:boolean}}
+ */
+export function branchHasWork(branch) {
+	const count = gitSafe(['rev-list', '--count', `main..${branch}`]);
+	const commits = count.ok ? Number(count.out) || 0 : 0;
+	// git diff --quiet: 차이가 없으면 exit 0(ok=true), 있으면 exit 1(ok=false)
+	const diff = gitSafe(['diff', '--quiet', `main...${branch}`]);
+	const hasDiff = !diff.ok;
+	return { commits, hasDiff, ok: commits > 0 && hasDiff };
+}
+
 /** node 스크립트 실행 (실패해도 throw 안함) */
 function gitSafeNode(args) {
 	try {
@@ -240,6 +259,21 @@ function cmdMergeStep(nn, slug, extraArgs) {
 	}
 	if (!branchExists(branch)) {
 		fail(`merge-step 거부: 브랜치 '${branch}' 가 존재하지 않습니다.`);
+	}
+
+	// 빈 병합 차단 — 게이트(비싼 검사)보다 먼저. 커밋 없이 merge 로 온 경우를 즉시 잡는다.
+	if (!extraArgs.includes('--allow-empty')) {
+		const work = branchHasWork(branch);
+		if (!work.ok) {
+			fail(
+				`merge-step 거부: '${branch}' 에 병합할 작업물이 없습니다 ` +
+					`(main 대비 커밋 ${work.commits}개, 변경 ${work.hasDiff ? '있음' : '없음'}). ` +
+					`구현 산출물을 step 브랜치에 git add/commit 한 뒤 다시 시도하세요. ` +
+					`(의도적 빈 병합은 --allow-empty)`,
+				1,
+			);
+		}
+		log(`작업물 확인: 커밋 ${work.commits}개 · main 대비 변경 있음`);
 	}
 
 	// done-gate 평가 — 통과해야만 main 에 쓰기 허용
@@ -270,7 +304,7 @@ function usage() {
 			'사용법:',
 			'  node scripts/git-flow.mjs seed-main',
 			'  node scripts/git-flow.mjs start-step <nn> <slug>',
-			'  node scripts/git-flow.mjs merge-step <nn> <slug> [--gate-ok] [--vote-override]',
+			'  node scripts/git-flow.mjs merge-step <nn> <slug> [--gate-ok] [--vote-override] [--allow-empty]',
 			'',
 			'skipGitFlow=true(=useGit=false) 면 모든 명령은 no-op 입니다.',
 		].join('\n'),
