@@ -71,7 +71,8 @@ node scripts/copy-project.selftest.mjs   # 복사 제외 필터·대상 검증
 node scripts/init-project.selftest.mjs      # Notion page id 추출
 node scripts/notion-api.selftest.mjs        # Notion flush 빌더·게이트
 node scripts/notion-storyboard.selftest.mjs # 스토리보드 업로드·첨부 게이트
-node scripts/eval-scenario.selftest.mjs     # 상호작용(E2E) 러너 스텝·단언
+node scripts/eval-scenario.selftest.mjs     # 상호작용(E2E) 러너 스텝·단언 + exit code 계약
+node scripts/plan.selftest.mjs              # 수용기준(AC) 커버리지 + 상태 대시보드
 ```
 
 > CI(`.github/workflows/ci.yml`)는 게이트 4종 + 위 self-test **13종** + `demo.mjs` 를 모두 실행합니다.
@@ -83,16 +84,18 @@ harness-setup/
 ├─ scripts/            # 하니스 드라이버·게이트·평가·로깅 (Node .mjs)
 │  ├─ init-project.mjs        # git/MCP 게이트 + config.json
 │  ├─ loop.mjs             # 재호출 드라이버 (1 호출 = 1 페이즈, 크래시 재개)
+│  ├─ status.mjs           # 상태 대시보드 (읽기 전용 — 위치·막힌 것·다음 1개 행동·AC 충족률)
 │  ├─ git-flow.mjs         # seed-main / start-step / merge-step (직푸시 차단)
 │  ├─ done-gate.mjs        # 결정적 게이트 + 평가 임계치(히스테리시스/래치)
 │  ├─ eval-playwright.mjs  # 고객 평가(Playwright) + 루브릭 + teardown
+│  ├─ eval-scenario.mjs    # 상호작용(E2E) 검증 + --preflight (스펙·AC 커버리지)
 │  ├─ check-arch.js        # FSD 레이어 경계 검사
 │  ├─ demo.mjs             # 통합 스모크 데모
 │  ├─ copy-project.mjs     # 다른 경로로 복사 + 초기화 (새 프로젝트 시작)
 │  ├─ reset-project.mjs    # 제자리 초기화 (산출물·토큰·정체성·Notion)
 │  ├─ notion-flush.mjs     # outbox → 실제 Notion 반영(flush, REST)
 │  ├─ *.selftest.mjs       # 각 모듈 자가검증
-│  └─ lib/                 # state / log / rubric / teardown / notion(적재) · notion-api(flush)
+│  └─ lib/                 # state / plan(수용기준 AC) / log / rubric / teardown / notion(적재) · notion-api(flush)
 ├─ .claude/
 │  ├─ agents/          # 협의체 9역할 정의 (ceo, pm, architect, ui, ux, qa, quality, …)
 │  └─ commands/        # 슬래시 커맨드 (init-project, start-project, run-cycle, …)

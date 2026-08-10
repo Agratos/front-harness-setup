@@ -74,6 +74,38 @@ node scripts/loop.mjs --init "01-login,02-dashboard,03-settings"
 - `--init` 은 상태가 `init`/없을 때만 시드(기존 진행 상태는 덮어쓰지 않음).
 - ✅ `--init` 은 **시드만** 하고 페이즈를 전진시키지 않는다. 첫 `/run-cycle` 호출이 `decompose` 부터 정상 진행한다.
 
+### 4b) ⛔ 수용기준(AC) 시드 — `harness/plan.json` (무조건)
+
+> **인터뷰 결과가 여기서 기계가 읽는 형태로 바뀐다.** 이 단계를 건너뛰면 `planSteps` 는 문자열 라벨
+> 배열로만 남고, 하네스는 **"무엇을 만족하면 이 step 이 끝인지"를 모른 채** 개발한다. 그러면
+> 루브릭은 "화면이 떴는가" 만 채점하고, 의도와 다르게 만들어져도 아무 게이트도 울리지 않는다.
+
+`harness/plan.example.json` 을 `harness/plan.json` 으로 복사해 Q&A 결과를 옮긴다.
+
+```json
+{
+  "steps": [
+    {
+      "label": "01-login",
+      "goal": "사용자가 이메일로 로그인한다",
+      "acceptance": [
+        { "id": "AC-1", "text": "올바른 이메일·비밀번호로 로그인하면 대시보드로 이동한다" },
+        { "id": "AC-2", "text": "비밀번호가 틀리면 오류 메시지가 보이고 이동하지 않는다" }
+      ]
+    }
+  ]
+}
+```
+
+- `label` 은 §4 의 `--init` 라벨과 **같은 문자열**로 맞춘다(라벨 우선 매칭, 불일치 시 인덱스 폴백).
+- AC 는 **관찰 가능한 문장**으로 쓴다. "로그인이 잘 된다"(X) → "로그인하면 대시보드로 이동한다"(O).
+  각 AC 는 나중에 `design` 페이즈에서 `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"`)으로 덮여야 한다.
+- 확인: `node scripts/status.mjs` 의 `수용기준 AC` 줄이 `— plan.json 없음` 이 아니게 된다.
+
+> AC 를 아직 못 정한 step 은 `acceptance` 를 비워두면 그 step 에서는 커버리지 검사가 비활성된다
+> (`design` 페이즈에서 채우면 그때부터 강제). 다만 **첫 step 은 반드시 채운다** — 그러지 않으면
+> 첫 사이클이 "무엇을 만들려는지 모르는 상태"로 돌아간다.
+
 ## 실행 요약
 
 ```bash
@@ -87,6 +119,8 @@ node scripts/init-project.mjs --use-mcp=true --git-remote=<url> --notion-url=<ur
 node scripts/git-flow.mjs seed-main
 # 4) 계획 시드 (시드만 함 — 페이즈 전진은 /run-cycle 부터)
 node scripts/loop.mjs --init "01-login,02-dashboard"
+# 4b) ⛔ 수용기준 시드 — harness/plan.example.json → harness/plan.json 작성 (인터뷰 결과를 AC 로)
+node scripts/status.mjs   # 확인: '수용기준 AC' 줄이 활성화됐는지
 ```
 
 ## 다음 단계

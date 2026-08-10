@@ -69,6 +69,9 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **실패 라우팅**(재시도 3 → 결함분류 되돌림 → 3 초과 시 `blocked`)       | **코드 강제** — `loop.mjs` `classifyFailure`/`computeFailureRouting`. 라이브락 금지             |
 | **상호작용(E2E) 검증**(verify 가 `eval-scenario` 를 실행, 단언 실패 시 전진 차단) | **코드 강제** — `loop.mjs` verify 페이즈. 예전엔 md 3곳의 ⛔ 지시뿐이라 실제로는 아무도 안 돌렸다(테스트벤치 실측) |
 | **E2E 검증 가능성**(스펙 부재·손상·dev 서버 미기동 = exit 2 → 전진 차단)  | **코드 강제** — `eval-scenario.mjs` exit code 분리(0 통과/면제/환경부재, 1 단언실패, 2 검증불가) + `loop.mjs` 가 원인별 되돌림(스펙 문제→`design`, 기동 실패→`implement`). 면제는 `skipReason` 명시 필요 |
+| **수용기준(AC) 커버리지**(선언한 AC 가 단언으로 덮이지 않으면 전진 차단)   | **코드 강제** — `lib/plan.mjs` + `eval-scenario --preflight`. `harness/plan.json` 의 `acceptance[]` ↔ 스펙 단언의 `"ac"` 태그를 대조. plan.json 이 없으면 no-op(하위호환), 있으면 강제 |
+| **값싼 검사 우선**(스펙·AC 프리플라이트가 결정적 게이트보다 먼저)          | **코드 강제** — `loop.mjs` verify 가 ①프리플라이트(0초) → ②게이트 4종(실측 15초) → ③E2E 순. 전제조건 불충족이면 게이트를 아예 돌리지 않는다 |
+| **새 프로젝트 격리**(이전 제품의 `plan.json`·`eval-scenario.json` 유출 차단) | **코드 강제** — `reset-project.mjs` 가 삭제 대상에 포함. 남기면 **다른 제품의 AC 가 커버리지를 통과**시켜 "의도가 검증됐다"고 오판한다 |
 | **평가 산출물 생성**(evaluate 가 `eval-playwright` 를 실행, 이번 사이클 평가가 없으면 전진 차단) | **코드 강제** — `loop.mjs` evaluate 페이즈. exit code 대신 **산출물(cycleId 일치)로 판정**. 예전엔 호출자 0건이었다 |
 | **미관찰 감점**(관찰하지 못한 항목은 통과가 아니라 불만)                  | **코드 강제** — `rubric.mjs` 는 `=== true` 만 통과, `eval-playwright.mjs` 정적 폴백은 미관찰을 `null` 로 남김 → 폴백은 임계(90) 통과 불가 |
 | **상호작용 실증 채점**(`fn.e2e-verified` 가 이번 사이클 E2E 결과를 읽음)  | **코드 강제** — `eval-scenario` → `scen-<cycle>/scenario.json` → `rubric.mjs`. 없으면 major 불만 |
@@ -103,7 +106,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 
 | 경로                | 무엇이 있나                                                                                                                                                                                                                       |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/`          | 하니스 드라이버·게이트·평가·로깅 (Node `.mjs`). `loop.mjs`(드라이버), `git-flow.mjs`, `done-gate.mjs`, `eval-playwright.mjs`, `check-arch.js`, `init-project.mjs`, `demo.mjs`, `copy-project.mjs`(다른 경로로 복사+초기화), `reset-project.mjs`(제자리 초기화), `notion-flush.mjs`(outbox→Notion REST flush), `*.selftest.mjs`. `lib/`: `notion.mjs`(적재)·`notion-api.mjs`(flush) |
+| `scripts/`          | 하니스 드라이버·게이트·평가·로깅 (Node `.mjs`). `loop.mjs`(드라이버), `status.mjs`(**읽기 전용 상태 대시보드**), `git-flow.mjs`, `done-gate.mjs`, `eval-playwright.mjs`, `eval-scenario.mjs`(상호작용 E2E + `--preflight`), `check-arch.js`, `init-project.mjs`, `demo.mjs`, `copy-project.mjs`(다른 경로로 복사+초기화), `reset-project.mjs`(제자리 초기화), `notion-flush.mjs`(outbox→Notion REST flush), `*.selftest.mjs`. `lib/`: `plan.mjs`(수용기준 AC 추적)·`notion.mjs`(적재)·`notion-api.mjs`(flush) |
 | `scripts/lib/`      | 공용 모듈: `state.mjs`(상태 매니페스트), `log.mjs`(logError/logCycle/logDecision), `rubric.mjs`(채점), `teardown.mjs`(프로세스 정리), `notion.mjs`(미러 어댑터)                                                                   |
 | `.claude/agents/`   | 협의체 9역할 정의 + `README.md` 인덱스                                                                                                                                                                                            |
 | `.claude/commands/` | 슬래시 커맨드: `copy-project`(다른 경로로 복사+초기화), `start-project`(제자리 정리·연동확인·Q&A·계획·시드 통합), `run-cycle`, `status`, `git-flow`, `evaluate`                                                                                                                                        |

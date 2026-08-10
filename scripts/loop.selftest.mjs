@@ -452,14 +452,19 @@ try {
 		'utf8',
 	);
 	writeFileSync(path.join(tmpG1, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
-	// 스펙이 없는 상황을 흉내내는 스텁: exit 2 + 원인 산출물
+	// 스펙이 없는 상황을 흉내내는 스텁. 실제 러너의 계약을 그대로 따른다:
+	//   --preflight → preflight.json 에 원인 기록 후 exit 2 (scenario.json 은 쓰지 않는다)
+	//   그 외      → scenario.json 에 기록 후 exit 2
 	writeFileSync(
 		path.join(tmpG1, 'scripts', 'eval-scenario.mjs'),
 		[
 			"import { mkdirSync, writeFileSync } from 'node:fs';",
-			"const id = (process.argv.slice(2).find((a) => a.startsWith('--id=')) ?? '--id=x').slice('--id='.length);",
+			"const argv = process.argv.slice(2);",
+			"const id = (argv.find((a) => a.startsWith('--id=')) ?? '--id=x').slice('--id='.length);",
 			"mkdirSync(`harness/evaluations/${id}`, { recursive: true });",
-			"writeFileSync(`harness/evaluations/${id}/scenario.json`, JSON.stringify({ passed: false, unverifiable: 'no-spec', reason: '스펙 파일 없음' }));",
+			"const payload = JSON.stringify({ ok: false, passed: false, unverifiable: 'no-spec', reason: '스펙 파일 없음' });",
+			"const file = argv.includes('--preflight') ? 'preflight.json' : 'scenario.json';",
+			'writeFileSync(`harness/evaluations/${id}/${file}`, payload);',
 			'process.exit(2);',
 		].join('\n') + '\n',
 		'utf8',
@@ -471,8 +476,10 @@ try {
 	const stG1 = readState(stateFilePath(tmpG1));
 	check('G: E2E 검증 불가 → verify 에서 전진하지 않음', stG1.phase === 'verify');
 	check('G: 실패 카운터 증가', (stG1.failures?.verify ?? 0) >= 1);
-	check('G: 로그에 "검증 불가" + 원인 표기', /검증 불가/.test(vr.stdout) && /스펙 파일 없음/.test(vr.stdout));
+	check('G: 로그에 원인 표기', /스펙 파일 없음/.test(vr.stdout));
 	check('G: 설계결함으로 분류 표기', /설계결함/.test(vr.stdout));
+	// 값싼 프리플라이트가 비싼 게이트보다 **먼저** 차단해야 한다 (게이트를 아예 돌리지 않음).
+	check('G: 프리플라이트가 게이트 실행 전에 차단', /프리플라이트 실패\(게이트 실행 전 차단\)/.test(vr.stdout));
 } catch (err) {
 	failures.push(`G-2 예외: ${err && err.stack ? err.stack : String(err)}`);
 } finally {

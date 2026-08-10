@@ -19,7 +19,8 @@
 		"copy": "node scripts/copy-project.mjs",
 		"notion:flush": "node scripts/notion-flush.mjs",
 		"notion:storyboard": "node scripts/notion-storyboard.mjs",
-		"eval:scenario": "node scripts/eval-scenario.mjs"
+		"eval:scenario": "node scripts/eval-scenario.mjs",
+		"status": "node scripts/status.mjs"
 	},
 	"dependencies": {
 		"@mantine/core": "^8.2.7",

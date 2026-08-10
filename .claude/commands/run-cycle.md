@@ -40,10 +40,10 @@
 | 페이즈      | 주도         | 산출/행위                                                                             |
 | ----------- | ------------ | ------------------------------------------------------------------------------------- |
 | `decompose` | 에이전트     | step 분해(`harness/decisions/<id>.md`). **진입 시 드라이버가 `git-flow start-step` 으로 step 브랜치 생성**                              |
-| `design`    | 에이전트     | 설계·구조 결정 (architect 중심). ADR.                                                 |
+| `design`    | 에이전트     | 설계·구조 결정 (architect 중심) + ADR. **⛔ 수용기준(AC)과 그것을 검증하는 상호작용 스펙을 여기서 확정한다** — `harness/plan.json` 의 `acceptance[]` + `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"` 태그). verify 의 스펙·AC 문제는 이 페이즈로 되돌아온다 |
 | `implement` | 에이전트     | 코드 구현 (ui/entity-modeler 등).                                                     |
-| `verify`    | **드라이버** | `done-gate --deterministic-only` (typecheck/lint/check-arch/test).                    |
-| `evaluate`  | 에이전트     | customer/quality/ux 채점 → `harness/evaluations/<id>.json` (종합 score + major 불만). |
+| `verify`    | **드라이버** | ①프리플라이트(스펙·AC 커버리지, 0초) → ②`done-gate --deterministic-only` → ③`eval-scenario`(실제 조작). |
+| `evaluate`  | 에이전트     | **드라이버가 `eval-playwright` 를 먼저 실행**(캡처물+베이스라인 생성, 이번 사이클 산출물 없으면 차단) → customer/quality/ux 가 캡처물을 보고 `harness/evaluations/<id>.json` 의 score·complaints 를 조정. |
 | `debate`    | 에이전트     | 평가 결과 토론·반박 → 재작업 결정. **드라이버**가 결과(pass/rework)로 전이 분기.       |
 | `vote`      | 에이전트     | (분기) 재작업 5회 초과 시에만 진입. 다수결+CEO 캐스팅보트 → `harness/decisions/<id>.md`. |
 | `merge`     | **드라이버** | done-gate 통과 시 `git-flow merge-step` → step 브랜치 push → main 병합 → main push(원격 시)                        |
@@ -69,10 +69,16 @@
 
 ## verify/QA — 상호작용(E2E) 검증 ✅ (이제 코드 강제)
 
-> ✅ **드라이버가 자동으로 실행한다.** `verify` 페이즈는 `done-gate --deterministic-only` 통과 후
-> **`node scripts/eval-scenario.mjs --id=scen-<cycleId>` 를 이어서 실행**하고, 단언이 하나라도 실패하면
-> **전진을 차단**한다(결함분류: 게이트 green + E2E 실패 = **구현결함** → `implement` 되돌림).
-> 오케스트레이터가 잊어버릴 수 있는 지점이 아니다. 스펙/Playwright/서버가 없으면 러너가 스스로 skip 한다.
+> ✅ **드라이버가 자동으로 실행한다.** `verify` 페이즈의 순서는 다음과 같다.
+>
+> 1. **프리플라이트**(0초, `eval-scenario --preflight`) — 스펙 존재·파싱 + **AC 커버리지**.
+>    실패하면 **게이트를 돌리지 않고** 즉시 차단한다(결정적 게이트 4종은 실측 15초, 실제 프로젝트면 1~2분).
+> 2. `done-gate --deterministic-only` (typecheck/lint/check-arch/test)
+> 3. `node scripts/eval-scenario.mjs --id=scen-<cycleId>` — 실제 조작 + 단언
+>
+> 단언이 하나라도 실패하면 전진을 차단한다(게이트 green + E2E 실패 = **구현결함** → `implement` 되돌림).
+> 스펙·AC 문제는 **설계결함** → `design` 되돌림. 오케스트레이터가 잊어버릴 수 있는 지점이 아니다.
+> **skip 은 Playwright 미설치(환경 부재)에만 허용**된다 — 스펙·서버 부재는 실패다(exit 2).
 >
 > 📌 **왜 코드로 옮겼나 (테스트벤치 실측)**: `e.currentTarget` 을 setState 업데이터 안에서 읽어
 > **두 번째 입력에 앱이 통째로 죽는** 버그가 typecheck·lint·check-arch·**단위테스트 10개**를 전부 통과하고
@@ -143,20 +149,22 @@ done-gate 는 **결정적 게이트 AND 평가 임계치(히스테리시스+래�
 ## 실행 루프 (의사 절차)
 
 ```bash
-# 현재 페이즈 확인
-node scripts/status.md 참조 → harness/state.json
+# ① 현재 위치·막힌 것·다음 행동 확인 (읽기 전용 — 전진하지 않음)
+node scripts/status.mjs
 
-# (에이전트 주도 페이즈면) 위 협의 위임을 수행해 decisions/evaluations 산출물 생성
+# ② (에이전트 주도 페이즈면) 위 협의 위임을 수행해 decisions/evaluations 산출물 생성
 
-# 페이즈 마감(전진) — 한 번 호출 = 한 페이즈
+# ③ 페이즈 마감(전진) — 한 번 호출 = 한 페이즈
 node scripts/loop.mjs
 
-#  ... status=done 이 될 때까지 위 과정을 반복 ...
+#  ... status=done 이 될 때까지 ①~③ 반복 ...
 ```
 
 - 각 호출은 현재 페이즈 1개를 실행하고 다음 페이즈로 전진합니다.
 - `merge` 후 다음 step 이 있으면 그 step 의 `decompose` 로 래핑, 없으면 `status=done`.
-- **멱등 재개**: `committed=false` 인데 페이즈가 done 표시면, 건너뛰지 않고 현재 페이즈를 재실행합니다.
+- **멱등 재개**: 페이즈 실행 중 크래시했으면(`lastExecutedPhaseSeq === phaseSeq` + 미커밋)
+  건너뛰지 않고 현재 페이즈를 재실행합니다(`RERUN` 표시).
+- ⚠️ `status.mjs` 는 **읽기 전용**입니다. `loop.mjs` 는 호출하면 전진하므로 조회용으로 쓰지 마세요.
 
 ## git 브랜치 라이프사이클 (사이클마다 브랜치)
 
