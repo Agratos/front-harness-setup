@@ -239,12 +239,17 @@ export function classifyFailure(phase, gateStatus, detail = {}) {
 	// 스펙(수용기준) 부재는 설계 산출물의 결함이므로 design 으로, dev 서버 미기동은 구현결함이다.
 	// (design → implement → verify 로 되돌아오므로 E2E 는 반드시 다시 실행된다.)
 	if (detail.e2e === 'unverifiable') {
-		const specProblem = ['no-spec', 'bad-spec', 'empty-spec'].includes(detail.unverifiable);
+		// 스펙/수용기준(AC) 문제는 **설계 산출물의 결함**이다 — 무엇을 만족해야 끝인지가 정의되지 않았다.
+		// ac-uncovered: AC 는 선언됐는데 그것을 증명하는 단언이 없다(= 검증 계획의 공백).
+		// exempt-with-ac: 면제를 선언했는데 AC 가 있다(= 계획과 검증이 서로 모순).
+		const specProblem = ['no-spec', 'bad-spec', 'empty-spec', 'ac-uncovered', 'bad-plan', 'exempt-with-ac'].includes(
+			detail.unverifiable,
+		);
 		if (specProblem) {
 			return {
 				kind: '설계결함',
 				nextPhase: 'design',
-				why: `상호작용 검증 스펙(수용기준) 부재/손상(${detail.unverifiable}) — AC 를 액션+단언으로 정의해야 함`,
+				why: `상호작용 검증 스펙/수용기준 문제(${detail.unverifiable}) — AC 를 정의하고 각 AC 를 덮는 단언을 작성해야 함`,
 			};
 		}
 		return {
@@ -336,6 +341,20 @@ export function readScenarioOutcome(repoRoot, scenId) {
 	}
 }
 
+/**
+ * eval-scenario `--preflight` 가 남긴 전제조건 기록 읽기 (없으면 null).
+ *
+ * 왜 `scenario.json` 과 다른 파일인가: 프리플라이트는 **"검증했다"는 증거가 아니다.**
+ * 같은 파일에 쓰면 평가의 `fn.e2e-verified` 가 "E2E 가 돌았다"고 오인할 수 있다.
+ */
+export function readScenarioPreflight(repoRoot, scenId) {
+	try {
+		return JSON.parse(readFileSync(path.join(repoRoot, 'harness', 'evaluations', scenId, 'preflight.json'), 'utf8'));
+	} catch {
+		return null;
+	}
+}
+
 /** node 자식 프로세스 실행 → {code} (출력 상속) */
 function runNode(args, repoRoot) {
 	try {
@@ -354,6 +373,30 @@ function runNode(args, repoRoot) {
  */
 function runDeterministicPhase(phase, state, repoRoot) {
 	if (phase === 'verify') {
+		const scenPre = path.join(repoRoot, 'scripts', 'eval-scenario.mjs');
+		const scenIdPre = scenarioIdOf(state);
+
+		// ── ① 값싼 전제조건 먼저 (0초) ─────────────────────────────────────────────
+		// 결정적 게이트 4종은 실측 **15초**(스캐폴드/테스트 5개 기준, 실제 프로젝트면 1~2분)다.
+		// 스펙 파일이 없거나 수용기준이 단언으로 덮이지 않았다면 그 15초는 통째로 낭비되고,
+		// 재시도마다 또 낭비된다. 이 저장소는 이미 같은 원칙을 적용하고 있다 —
+		// `git-flow.mjs` 의 빈 병합 차단이 "게이트(비싼 검사)보다 먼저" 실행된다.
+		// verify 만 그 원칙을 어기고 있었다.
+		if (existsSync(scenPre)) {
+			const p = runNode([scenPre, '--preflight', `--id=${scenIdPre}`], repoRoot);
+			if (p.code === EXIT_UNVERIFIABLE) {
+				// 프리플라이트는 산출물을 쓰지 않으므로(=검증 증거가 아니므로) 원인을 직접 조회한다.
+				const pre = readScenarioPreflight(repoRoot, scenIdPre);
+				return {
+					ok: false,
+					e2e: 'unverifiable',
+					unverifiable: pre?.unverifiable ?? 'unknown',
+					note: `프리플라이트 실패(게이트 실행 전 차단) — ${pre?.reason ?? `eval-scenario --preflight exit ${p.code}`}`,
+				};
+			}
+		}
+
+		// ── ② 비싼 결정적 게이트 ───────────────────────────────────────────────────
 		const gate = path.join(repoRoot, 'scripts', 'done-gate.mjs');
 		if (!existsSync(gate)) return { ok: true, note: 'done-gate.mjs 없음 → verify 통과 처리(merge 에서 재검증)' };
 		const r = runNode([gate, '--deterministic-only'], repoRoot);

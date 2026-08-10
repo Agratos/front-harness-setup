@@ -38,6 +38,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { checkAcCoverage, findStep, formatCoverage, readPlan } from './lib/plan.mjs';
+import { readState, stateFilePath } from './lib/state.mjs';
 import { teardownDevServer } from './lib/teardown.mjs';
 
 const DEFAULT_PORT = 8000;
@@ -69,14 +71,90 @@ function writeOutcome(repoRoot, id, payload) {
 }
 
 function parseArgs(argv) {
-	const o = { port: DEFAULT_PORT, spec: null, id: 'scenario', noServer: false };
+	const o = { port: DEFAULT_PORT, spec: null, id: 'scenario', noServer: false, preflight: false };
 	for (const a of argv) {
 		if (a.startsWith('--port=')) o.port = Number(a.slice('--port='.length));
 		else if (a.startsWith('--spec=')) o.spec = a.slice('--spec='.length);
 		else if (a.startsWith('--id=')) o.id = a.slice('--id='.length);
 		else if (a === '--no-server') o.noServer = true;
+		else if (a === '--preflight') o.preflight = true;
 	}
 	return o;
+}
+
+/**
+ * 프리플라이트 — **비싼 검사 앞에 두는 값싼 전제조건 확인**. 서버·브라우저를 쓰지 않는다(0초).
+ *
+ * 왜 분리했나: verify 는 `done-gate`(결정적 게이트 4종, 실측 **15초** — 실제 프로젝트면 1~2분)를
+ * 먼저 돌린 뒤에야 "스펙 파일이 있는가"(0초)를 확인했다. 스펙이 없으면 그 15초가 통째로 버려지고,
+ * 재시도마다 또 버려진다. 이 저장소는 이미 같은 원칙을 알고 있다 —
+ * `git-flow.mjs` 의 빈 병합 차단에 "게이트(비싼 검사)보다 먼저" 라는 주석이 있다.
+ * verify 만 그 원칙을 어기고 있었다.
+ *
+ * 검사 항목:
+ *   1) 스펙 존재·파싱 (없음/깨짐/빈 스펙+사유없음 → 검증 불가)
+ *   2) **AC 커버리지** — `harness/plan.json` 이 있으면 이번 step 의 모든 AC 가
+ *      최소 1개 단언(`"ac": "AC-1"`)으로 덮였는지. plan.json 이 없으면 이 검사는 생략(하위호환).
+ *
+ * @returns {{ok:boolean, exitCode:number, unverifiable?:string, reason:string, coverage?:object}}
+ */
+export function preflight(opts, repoRoot) {
+	const specPath = opts.spec ?? path.join(repoRoot, 'harness', 'eval-scenario.json');
+	const specRel = path.relative(repoRoot, specPath);
+
+	if (!existsSync(specPath)) {
+		return { ok: false, exitCode: EXIT_UNVERIFIABLE, unverifiable: 'no-spec', reason: `스펙 파일 없음(${specRel})` };
+	}
+	let spec;
+	try {
+		spec = JSON.parse(readFileSync(specPath, 'utf8'));
+	} catch (e) {
+		return {
+			ok: false,
+			exitCode: EXIT_UNVERIFIABLE,
+			unverifiable: 'bad-spec',
+			reason: `스펙 JSON 파싱 실패: ${String(e?.message ?? e).slice(0, 200)}`,
+		};
+	}
+	const scenarios = spec.scenarios ?? [];
+	const skipReason = typeof spec.skipReason === 'string' ? spec.skipReason.trim() : '';
+	if (scenarios.length === 0 && !skipReason) {
+		return { ok: false, exitCode: EXIT_UNVERIFIABLE, unverifiable: 'empty-spec', reason: '시나리오 0개 + skipReason 없음' };
+	}
+
+	// AC 커버리지 — 사용자 의도(수용기준)가 실제로 검증되는지.
+	const { present, plan, error } = readPlan(repoRoot);
+	if (present && error) {
+		return { ok: false, exitCode: EXIT_UNVERIFIABLE, unverifiable: 'bad-plan', reason: error };
+	}
+	if (present && plan) {
+		const state = readState(stateFilePath(repoRoot));
+		const idx = state?.currentStepIdx ?? 0;
+		const label = (state?.planSteps ?? [])[idx];
+		const { step: planStep } = findStep(plan, { label, idx });
+		const coverage = checkAcCoverage(planStep, spec);
+		if (coverage.applicable && !coverage.ok) {
+			return {
+				ok: false,
+				exitCode: EXIT_UNVERIFIABLE,
+				unverifiable: 'ac-uncovered',
+				reason: `수용기준(AC)이 단언으로 덮이지 않음 — ${formatCoverage(coverage)}`,
+				coverage,
+			};
+		}
+		// 면제(skipReason)인데 AC 가 선언돼 있으면 모순이다 — 조용히 넘기지 않는다.
+		if (coverage.applicable && scenarios.length === 0) {
+			return {
+				ok: false,
+				exitCode: EXIT_UNVERIFIABLE,
+				unverifiable: 'exempt-with-ac',
+				reason: `면제(skipReason)를 선언했지만 plan.json 에 AC ${coverage.total}개가 있습니다 — 둘 중 하나가 틀렸습니다`,
+				coverage,
+			};
+		}
+		return { ok: true, exitCode: EXIT_PASS, reason: formatCoverage(coverage), coverage, spec };
+	}
+	return { ok: true, exitCode: EXIT_PASS, reason: 'AC 커버리지 검사 생략(plan.json 없음)', spec };
 }
 
 function startDevServer(repoRoot, port) {
@@ -195,41 +273,33 @@ export async function runStep(page, step) {
 
 /** 메인: 스펙의 시나리오들을 dev 서버 + Playwright 로 실제 실행. */
 export async function runScenarios(opts, repoRoot) {
-	const specPath = opts.spec ?? path.join(repoRoot, 'harness', 'eval-scenario.json');
-	const specRel = path.relative(repoRoot, specPath);
 	const base = { id: opts.id, mode: 'scenario' };
 
-	// ── 검증 불가 ①: 스펙 산출물 부재 → 실패(exit 2). 예전에는 조용히 통과했다.
-	if (!existsSync(specPath)) {
-		log(`❌ 시나리오 스펙 없음(${specRel}) — 상호작용 검증 불가`);
-		log(`   이 step 의 핵심 유스케이스를 액션+단언으로 적으세요 (예시: harness/eval-scenario.example.json).`);
-		log(`   상호작용이 없는 step 이면 면제를 명시하세요: { "scenarios": [], "skipReason": "<이유>" }`);
+	// 전제조건은 프리플라이트 한 곳에서 판정한다 (스펙 존재·파싱·빈 스펙·AC 커버리지).
+	// verify 는 이 프리플라이트를 **비싼 게이트보다 먼저** 따로 호출하므로, 여기까지 왔다면
+	// 보통 통과 상태다. 단독 실행(`yarn eval:scenario`)을 위해 여기서도 한 번 더 본다.
+	const pf = preflight(opts, repoRoot);
+	if (!pf.ok) {
+		log(`❌ 전제조건 실패 — ${pf.reason}`);
+		if (pf.unverifiable === 'no-spec') {
+			log(`   이 step 의 핵심 유스케이스를 액션+단언으로 적으세요 (예시: harness/eval-scenario.example.json).`);
+			log(`   상호작용이 없는 step 이면 면제를 명시하세요: { "scenarios": [], "skipReason": "<이유>" }`);
+		}
+		if (pf.unverifiable === 'ac-uncovered') {
+			log(`   각 단언에 어느 수용기준을 덮는지 태그하세요: { "assert": "textVisible", "text": "...", "ac": "AC-1" }`);
+		}
 		return writeOutcome(repoRoot, opts.id, {
 			...base,
 			passed: false,
-			exitCode: EXIT_UNVERIFIABLE,
-			unverifiable: 'no-spec',
-			reason: `스펙 파일 없음(${specRel})`,
+			exitCode: pf.exitCode,
+			unverifiable: pf.unverifiable,
+			reason: pf.reason,
+			coverage: pf.coverage ?? null,
 			scenarioCount: 0,
 			failures: [],
 		});
 	}
-	let spec;
-	try {
-		spec = JSON.parse(readFileSync(specPath, 'utf8'));
-	} catch (e) {
-		// ── 검증 불가 ②: 스펙이 깨짐 → 실패. 문법 오류를 통과로 읽으면 게이트가 무의미해진다.
-		log(`❌ 스펙 파싱 실패(${specRel}):`, e?.message ?? e);
-		return writeOutcome(repoRoot, opts.id, {
-			...base,
-			passed: false,
-			exitCode: EXIT_UNVERIFIABLE,
-			unverifiable: 'bad-spec',
-			reason: `스펙 JSON 파싱 실패: ${String(e?.message ?? e).slice(0, 200)}`,
-			scenarioCount: 0,
-			failures: [],
-		});
-	}
+	const spec = pf.spec;
 	const scenarios = spec.scenarios ?? [];
 	const skipReason = typeof spec.skipReason === 'string' ? spec.skipReason.trim() : '';
 
@@ -246,19 +316,7 @@ export async function runScenarios(opts, repoRoot) {
 			failures: [],
 		});
 	}
-	// ── 검증 불가 ③: 빈 스펙인데 사유가 없음 → 실패. "스펙을 만들어 두고 비워두기" 우회를 막는다.
-	if (scenarios.length === 0) {
-		log(`❌ 스펙에 시나리오가 0개인데 면제 사유(skipReason)가 없습니다 — 검증 불가`);
-		return writeOutcome(repoRoot, opts.id, {
-			...base,
-			passed: false,
-			exitCode: EXIT_UNVERIFIABLE,
-			unverifiable: 'empty-spec',
-			reason: '시나리오 0개 + skipReason 없음',
-			scenarioCount: 0,
-			failures: [],
-		});
-	}
+	if (pf.coverage?.applicable) log(`수용기준 커버리지: ${formatCoverage(pf.coverage)}`);
 	const shotDir = path.join(repoRoot, 'harness', 'evaluations', opts.id);
 	let child;
 	let serverReady = false;
@@ -380,6 +438,8 @@ export async function runScenarios(opts, repoRoot) {
 			mode: 'scenario',
 			passed: failures.length === 0,
 			exitCode: failures.length === 0 ? EXIT_PASS : EXIT_ASSERT_FAIL,
+			// 수용기준 커버리지 — /status 와 평가가 "무엇이 검증됐나" 를 읽는다.
+			coverage: pf.coverage ?? null,
 			scenarioCount: results.length,
 			scenarios: results.map((r) => ({
 				name: r.name,
@@ -412,6 +472,31 @@ export async function runScenarios(opts, repoRoot) {
 
 async function main() {
 	const opts = parseArgs(process.argv.slice(2));
+	// --preflight: 전제조건만 확인하고 즉시 종료 (서버·브라우저 미사용, 산출물 미기록).
+	// 산출물을 쓰지 않는 것이 중요하다 — 프리플라이트는 "검증했다"는 증거가 아니다.
+	if (opts.preflight) {
+		const repoRoot = process.cwd();
+		const pf = preflight(opts, repoRoot);
+		log(`프리플라이트: ${pf.ok ? 'OK' : 'FAIL'} — ${pf.reason}`);
+		// 원인을 별도 파일(preflight.json)로 남긴다 — 호출자(loop)가 결함 분류에 쓴다.
+		// scenario.json 에 쓰지 않는 이유: 프리플라이트는 검증 증거가 아니다.
+		try {
+			const dir = path.join(repoRoot, 'harness', 'evaluations', opts.id);
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(
+				path.join(dir, 'preflight.json'),
+				JSON.stringify(
+					{ id: opts.id, ok: pf.ok, exitCode: pf.exitCode, unverifiable: pf.unverifiable ?? null, reason: pf.reason, coverage: pf.coverage ?? null },
+					null,
+					2,
+				) + '\n',
+				'utf8',
+			);
+		} catch {
+			/* 기록 실패는 판정에 영향 없음 */
+		}
+		process.exit(pf.exitCode);
+	}
 	const out = await runScenarios(opts, process.cwd());
 	// exitCode 를 결과에 담아 반환하므로 그대로 쓴다 (0 통과/면제/환경부재, 1 단언실패, 2 검증불가).
 	const code = Number.isInteger(out?.exitCode) ? out.exitCode : out?.passed === false ? EXIT_ASSERT_FAIL : EXIT_PASS;

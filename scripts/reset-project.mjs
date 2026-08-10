@@ -114,10 +114,23 @@ export function planReset(repoRoot, name, opts = {}) {
 		}
 	}
 
-	// (1) 런타임 단일 파일 삭제: state.json / config.json / report.md
-	for (const rel of ['state.json', 'config.json', 'report.md']) {
+	// (1) 런타임 단일 파일 삭제: state.json / config.json / report.md / gate-status.json
+	for (const rel of ['state.json', 'config.json', 'report.md', 'gate-status.json']) {
 		const p = path.join(h, rel);
 		if (existsSync(p)) actions.push({ type: 'delete', path: p, note: '런타임 산출물' });
+	}
+
+	// (1-b) **프로젝트 고유 의도·검증 정의** 삭제 — 이건 하네스 엔진이 아니라 "그 제품의 내용"이다.
+	//
+	// ⚠️ 이걸 남기면 새 프로젝트가 **이전 제품의 수용기준(plan.json)과 상호작용 시나리오
+	// (eval-scenario.json)를 물려받는다.** 그러면 두 가지 사고가 난다:
+	//   ① 이전 제품의 시나리오를 새 앱에 돌려 엉뚱한 단언이 실패한다(원인 찾기 어려움)
+	//   ② 더 나쁘게는 plan.json 의 AC 가 그 스펙으로 전부 덮여 있어 **AC 커버리지가 통과**한다 —
+	//      하네스는 "의도가 검증됐다"고 판단하는데 그 의도는 **다른 제품의 것**이다.
+	// example 파일(plan.example.json / eval-scenario.example.json)은 작성 참고용이므로 보존한다.
+	for (const rel of ['plan.json', 'eval-scenario.json']) {
+		const p = path.join(h, rel);
+		if (existsSync(p)) actions.push({ type: 'delete', path: p, note: '이전 프로젝트의 의도·검증 정의' });
 	}
 
 	// (2) cycle-log 비우기(파일은 유지, 내용만 초기화). 이미 비었으면 건너뜀(멱등).

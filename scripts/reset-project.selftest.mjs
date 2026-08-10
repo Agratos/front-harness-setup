@@ -36,6 +36,13 @@ try {
 	w('harness/notion-outbox/dashboard-main.json', '{"kind":"dashboard.upsert"}\n');
 	w('harness/notion-outbox/decision-0001-turn-0.json', '{"kind":"decision.comment.mirror"}\n');
 	w('harness/report.md', '# old report\n');
+	w('harness/gate-status.json', '{"passed":true,"cycleId":"step-0#0"}\n');
+	// 이전 **제품의** 의도·검증 정의 — 새 프로젝트로 넘어가면 안 된다(엉뚱한 AC 가 통과해버림)
+	w('harness/plan.json', '{"steps":[{"label":"01-old","acceptance":[{"id":"AC-1","text":"옛 제품 기준"}]}]}\n');
+	w('harness/eval-scenario.json', '{"scenarios":[{"name":"옛 시나리오","steps":[]}]}\n');
+	// 작성 참고용 example 은 보존되어야 함
+	w('harness/plan.example.json', '{"steps":[]}\n');
+	w('harness/eval-scenario.example.json', '{"scenarios":[]}\n');
 	w('harness/cycles/cycle-log.ndjson', '{"phase":"merge"}\n{"phase":"verify"}\n');
 	w('harness/decisions/decision-0001.md', '# 실제 결정 1\n');
 	w('harness/decisions/decision-0002.md', '# 실제 결정 2\n');
@@ -63,6 +70,13 @@ try {
 	check('state.json 삭제됨', !existsSync(path.join(tmp, 'harness', 'state.json')));
 	check('config.json 삭제됨', !existsSync(path.join(tmp, 'harness', 'config.json')));
 	check('report.md 삭제됨', !existsSync(path.join(tmp, 'harness', 'report.md')));
+	check('gate-status.json 삭제됨', !existsSync(path.join(tmp, 'harness', 'gate-status.json')));
+
+	// 검증: 이전 제품의 의도·검증 정의 제거 / 작성 참고용 example 보존
+	check('plan.json 삭제됨 (이전 제품의 수용기준 유출 차단)', !existsSync(path.join(tmp, 'harness', 'plan.json')));
+	check('eval-scenario.json 삭제됨 (이전 제품의 시나리오 유출 차단)', !existsSync(path.join(tmp, 'harness', 'eval-scenario.json')));
+	check('plan.example.json 보존됨', existsSync(path.join(tmp, 'harness', 'plan.example.json')));
+	check('eval-scenario.example.json 보존됨', existsSync(path.join(tmp, 'harness', 'eval-scenario.example.json')));
 
 	// cycle-log 는 파일은 남고 내용은 비어야 함
 	const cyc = path.join(tmp, 'harness', 'cycles', 'cycle-log.ndjson');

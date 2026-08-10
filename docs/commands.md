@@ -12,7 +12,7 @@ harness-setup 의 슬래시 커맨드 목록과 실행 흐름입니다. 각 커�
 | `/copy-project`  | 다른 경로로 **복사 + 빈 껍데기화**(테스트 산출물·토큰 제거, Notion 미건드림) | `copy-project.mjs`           | 아니오(새 위치 생성) |
 | `/start-project` | git/Notion **접속 확인 + Notion 대시보드 초기화** → Q&A·계획·main 시드 | `init-project`·`loop`·`git-flow` `.mjs` | 아니오 |
 | `/run-cycle`     | 사이클 완주 — 페이즈 드라이버 재호출 + 협의 위임                      | `loop.mjs`                   | 아니오 |
-| `/status`        | 진행 상태(step/phase/score/rework) 요약                              | `state.json` 조회            | 아니오 |
+| `/status`        | 진행 상태 대시보드 — 위치·막힌 것·**다음 1개 행동**·수용기준 충족률 | `node scripts/status.mjs` (읽기 전용) | 아니오 |
 | `/git-flow`      | `seed-main` / `start-step` / `merge-step` (직푸시 차단)              | `git-flow.mjs`               | 쓰기(merge 게이트) |
 | `/evaluate`      | 고객 평가(Playwright) + 루브릭 채점 + Notion 미러                     | `eval-playwright.mjs`        | 아니오(teardown 포함) |
 
