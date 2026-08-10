@@ -1,0 +1,244 @@
+<title>하네스 4회 반복 시험 결과 — 개입 5→0, 방어 실패→성공</title>
+<style>
+	:root {
+		--bg: #edeff2; --surface: #ffffff; --surface-2: #f4f6f8;
+		--ink: #12161b; --ink-2: #4e5a66; --ink-3: #7c8894;
+		--line: #d3d9df; --line-strong: #b3bdc6; --accent: #2f4858;
+		--bad: #a8342a; --warn: #8a6008; --ok: #2a6249; --code-bg: #f1f4f6;
+		--term-bg: #1b2229; --term-ink: #d9e0e6; --term-dim: #7d8994; --term-bad: #e08a7e; --term-key: #8fb8cd;
+		--sans: "Pretendard", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+		--mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", "D2Coding", monospace;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root:not([data-theme="light"]) {
+			--bg: #0f1317; --surface: #161b21; --surface-2: #1b2129;
+			--ink: #e6eaee; --ink-2: #a2aeb9; --ink-3: #75828e;
+			--line: #262e36; --line-strong: #3a454f; --accent: #93b8cb;
+			--bad: #e28377; --warn: #d5a64b; --ok: #6dbf9b; --code-bg: #1b2129;
+			--term-bg: #0a0e12; --term-ink: #d2dae1;
+		}
+	}
+	:root[data-theme="dark"] {
+		--bg: #0f1317; --surface: #161b21; --surface-2: #1b2129;
+		--ink: #e6eaee; --ink-2: #a2aeb9; --ink-3: #75828e;
+		--line: #262e36; --line-strong: #3a454f; --accent: #93b8cb;
+		--bad: #e28377; --warn: #d5a64b; --ok: #6dbf9b; --code-bg: #1b2129;
+		--term-bg: #0a0e12; --term-ink: #d2dae1;
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
+	code, .mono { font-family: var(--mono); }
+	.wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 96px; }
+
+	.masthead { border-bottom: 2px solid var(--ink); padding: 56px 0 20px; margin-bottom: 40px; }
+	.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px; }
+	.masthead h1 { font-size: clamp(28px, 4.4vw, 42px); line-height: 1.18; letter-spacing: -.02em; font-weight: 800; margin: 0 0 12px; text-wrap: balance; }
+	.masthead .lede { font-size: 17px; color: var(--ink-2); margin: 0; max-width: 62ch; }
+	.meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-3); margin-top: 20px; }
+	.meta b { color: var(--ink-2); font-weight: 600; }
+
+	section { margin-bottom: 60px; }
+	section > h2 { font-size: 13px; font-family: var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 6px; }
+	section > .title { font-size: clamp(21px, 2.7vw, 27px); font-weight: 750; letter-spacing: -.015em; margin: 0 0 22px; padding-bottom: 13px; border-bottom: 1px solid var(--line-strong); text-wrap: balance; }
+	p { margin: 0 0 15px; max-width: 72ch; }
+	.dim { color: var(--ink-2); }
+
+	.thesis { background: var(--surface); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); padding: 20px 24px; margin: 24px 0; }
+	.thesis p { margin: 0; font-size: 17px; }
+	.thesis p + p { margin-top: 10px; }
+
+	.scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--line); background: var(--surface); }
+	table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 14.5px; }
+	th, td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+	thead th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; border-bottom: 1px solid var(--line-strong); background: var(--surface-2); white-space: nowrap; }
+	tbody tr:last-child td { border-bottom: 0; }
+	td.n, th.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: center; }
+	.big { font-family: var(--mono); font-size: 17px; font-weight: 600; }
+	.d-bad { color: var(--bad); } .d-ok { color: var(--ok); } .d-warn { color: var(--warn); }
+
+	.term { background: var(--term-bg); border: 1px solid var(--line-strong); margin: 0 0 8px; overflow-x: auto; padding: 16px 18px; }
+	.term pre { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: var(--term-ink); white-space: pre; }
+	.term .d { color: var(--term-dim); } .term .k { color: var(--term-key); } .term .r { color: var(--term-bad); }
+	.cap { font-size: 13.5px; color: var(--ink-3); margin: 0 0 24px; }
+
+	code { background: var(--code-bg); border: 1px solid var(--line); padding: .5px 5px; font-size: .875em; white-space: nowrap; }
+	ul.t { margin: 0 0 15px; padding-left: 20px; } ul.t li { margin-bottom: 6px; } ul.t li::marker { color: var(--ink-3); }
+
+	.trend { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: 26px; }
+	.trend > div { background: var(--surface); padding: 16px 16px 14px; }
+	.trend .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 8px; }
+	.trend .v { font-family: var(--mono); font-size: 25px; font-weight: 600; letter-spacing: -.02em; line-height: 1; display: block; }
+	.trend .v .from { color: var(--ink-3); } .trend .v .arw { color: var(--ink-3); font-size: 17px; }
+	.trend .n2 { font-size: 12.5px; color: var(--ink-3); margin-top: 7px; display: block; line-height: 1.5; }
+
+	.closing { border-top: 2px solid var(--ink); padding-top: 20px; margin-top: 10px; }
+	a { color: var(--accent); } a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+	@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+	<header class="masthead">
+		<p class="eyebrow">Testbench · 4 trials · 2026-08-10</p>
+		<h1>같은 앱을 네 번 만들어<br />하네스가 나아지는지 확인했다</h1>
+		<p class="lede">
+			고정 사양(프로젝트 관리 프로그램)으로 매번 새 복사본에서 처음부터 개발했습니다.
+			사람 개입은 5회에서 0회로 줄고, 이전에 <strong>100점을 받고 병합됐던 버그</strong>가 이번엔 차단됐습니다.
+		</p>
+		<div class="meta">
+			<span><b>사양</b> docs/testbench/project-manager.md (고정)</span>
+			<span><b>범위</b> 부트스트랩 + step 01 (AC 4개)</span>
+			<span><b>시행</b> pm-trial1 ~ 4</span>
+		</div>
+	</header>
+
+	<section>
+		<h2>01 — Trend</h2>
+		<p class="title">추세</p>
+
+		<div class="trend">
+			<div>
+				<span class="k">사람 개입</span>
+				<span class="v"><span class="from">5</span> <span class="arw">→</span> <span class="d-ok">0</span></span>
+				<span class="n2">부팅 마찰 소멸</span>
+			</div>
+			<div>
+				<span class="k">하네스 결함 발견</span>
+				<span class="v"><span class="from">6</span> <span class="arw">→</span> <span class="d-ok">0</span></span>
+				<span class="n2">신규 기준</span>
+			</div>
+			<div>
+				<span class="k">게이트 실패</span>
+				<span class="v"><span class="from">2</span> <span class="arw">→</span> <span class="d-ok">0</span></span>
+				<span class="n2">태생적 RED 해소</span>
+			</div>
+			<div>
+				<span class="k">상호작용 버그</span>
+				<span class="v d-ok">차단</span>
+				<span class="n2">시행 1: 머지됨</span>
+			</div>
+		</div>
+
+		<div class="scroll">
+			<table>
+				<thead><tr><th>지표</th><th class="n">시행 1</th><th class="n">시행 2</th><th class="n">시행 3</th><th class="n">시행 4</th></tr></thead>
+				<tbody>
+					<tr><td><strong>사람 개입</strong></td><td class="n big d-bad">5</td><td class="n big d-warn">1</td><td class="n big d-ok">0</td><td class="n big d-ok">0</td></tr>
+					<tr><td>AC 달성 (/4)</td><td class="n">4</td><td class="n">4</td><td class="n">4</td><td class="n">—</td></tr>
+					<tr><td>게이트 실패</td><td class="n">2</td><td class="n">0</td><td class="n">0</td><td class="n">0</td></tr>
+					<tr><td>E2E 실패 단언</td><td class="n">6 → 0</td><td class="n">0</td><td class="n">0</td><td class="n">1 (의도)</td></tr>
+					<tr><td><strong>하네스 결함 발견</strong></td><td class="n big d-bad">6</td><td class="n big d-warn">1</td><td class="n big d-ok">0</td><td class="n big d-ok">0</td></tr>
+				</tbody>
+			</table>
+		</div>
+		<p class="cap">시행 4의 실패 단언 1건은 의도적으로 심은 결함입니다 — 아래 실험 참조.</p>
+	</section>
+
+	<section>
+		<h2>02 — What trial 1 found</h2>
+		<p class="title">시행 1: 새 프로젝트가 정상 출발조차 못 했다</p>
+
+		<p>개입 5회는 전부 코드를 쓰기 <em>전에</em> 발생했습니다.</p>
+		<div class="scroll">
+			<table>
+				<thead><tr><th class="n">ID</th><th>증상</th><th>뿌리</th></tr></thead>
+				<tbody>
+					<tr><td class="n">T1-1</td><td>절차 순서가 거꾸로 → step 01 이 <strong>브랜치 없이 main 에서</strong> 작업됨</td><td>문서 순서 + <code>start-step</code> 실패를 전진 차단으로 안 봄</td></tr>
+					<tr><td class="n">T1-2</td><td>복사 직후 <strong>테스트 RED</strong></td><td><code>reset-project</code> 정체성 치환에 테스트 파일 누락</td></tr>
+					<tr><td class="n">T1-3</td><td>MantineProvider·CSS import 수동 배선</td><td>스캐폴드가 제품 단계 미준비</td></tr>
+					<tr><td class="n">T1-4</td><td>jsdom <code>matchMedia</code> 부재 → 렌더 테스트 전멸</td><td>스캐폴드가 제품 단계 미준비</td></tr>
+					<tr><td class="n">T1-5</td><td>앱 크래시가 <code>Timeout 30000ms</code> × 6 으로만 보고됨</td><td>E2E 러너가 <code>pageerror</code> 미수집</td></tr>
+					<tr><td class="n">T1-6</td><td>크래시 후에도 단계 계속 → 3분 낭비 + <strong>거짓 통과</strong></td><td>fail-fast 없음</td></tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div class="thesis">
+			<p>그리고 결정적인 것 — <strong>죽은 앱이 100점을 받았다.</strong></p>
+			<p class="dim">
+				<code>e.currentTarget</code> 을 setState 업데이터 안에서 읽어 두 번째 키 입력에 앱이 통째로 언마운트되는 버그가
+				<code>typecheck</code>·<code>lint</code>·<code>check-arch</code>·<strong>단위테스트 10개</strong>를 전부 통과하고,
+				루브릭 평가는 <strong>종합 100 / major 0</strong> 을 줬습니다. 평가가 조작을 안 하니 초기 렌더만 봅니다.
+				오직 E2E 시나리오만 잡았는데 — <strong>그 러너를 호출하는 코드가 어디에도 없었습니다.</strong>
+				md 3곳에 "⛔ 무조건 실행"이라 적혀 있을 뿐이었습니다.
+			</p>
+		</div>
+	</section>
+
+	<section>
+		<h2>03 — The experiment</h2>
+		<p class="title">시행 4: 같은 버그를 일부러 심었다</p>
+
+		<p>
+			시행 3에서 부팅 개입이 0이 되자 반복은 정보가 적어졌습니다. 그래서 시행 4를 실험으로 바꿨습니다 —
+			<code>verify</code> 페이즈가 E2E 를 직접 실행하도록 코드화한 뒤, <strong>시행 1의 버그를 그대로 심고</strong>
+			사람이 E2E 를 따로 돌리지 않은 채 <code>loop.mjs</code> 만 호출했습니다.
+		</p>
+
+		<div class="term">
+<pre><span class="d">$</span> node scripts/loop.mjs   <span class="d"># design → implement → verify, 그 외 아무것도 안 함</span>
+
+[scenario]   <span class="r">[FAIL] crash</span> — 앱 언마운트 감지, 남은 단계 중단:
+             <span class="r">Cannot read properties of null (reading 'value')</span>
+[scenario] 결과: <span class="r">FAIL</span> — 시나리오 2개, 실패 단언 1건
+
+[loop] 결정적 페이즈 <span class="k">'verify'</span>: done-gate ok / eval-scenario(scen-step-0-r0) exit 1
+       — 상호작용 단언 실패(기능 결함)
+[loop] 'verify' 실패 1/3 — <span class="k">구현결함</span> (결정적 게이트는 green — 상호작용 단언 실패로 판단)
+       → 같은 페이즈 재시도 (한도 도달 시 implement 로 되돌림)
+
+phase: <span class="k">verify</span>   failures: verify=1/3   escalations: 0/3</pre>
+		</div>
+		<p class="cap">전진하지 않았습니다. 시행 1에서 100점으로 머지됐을 버그가 차단됐습니다.</p>
+
+		<div class="scroll">
+			<table>
+				<thead><tr><th>같은 버그, 다른 하네스</th><th>시행 1</th><th>시행 4</th></tr></thead>
+				<tbody>
+					<tr><td>게이트 4종 · 단위테스트</td><td>통과</td><td>통과 <span class="dim">(정적으로는 안 보임)</span></td></tr>
+					<tr><td>루브릭 평가</td><td class="d-bad"><strong>100 / major 0</strong></td><td>평가까지 못 감</td></tr>
+					<tr><td>E2E 실행 주체</td><td class="d-bad">사람이 수동으로</td><td class="d-ok">드라이버가 자동으로</td></tr>
+					<tr><td>실패 진단</td><td class="d-bad">타임아웃 6줄, 원인 불명</td><td class="d-ok">첫 줄에 근본원인</td></tr>
+					<tr><td><strong>병합 여부</strong></td><td class="d-bad"><strong>머지됨</strong></td><td class="d-ok"><strong>차단됨</strong></td></tr>
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<section>
+		<h2>04 — Conclusion</h2>
+		<p class="title">배운 것</p>
+
+		<div class="thesis">
+			<p>하네스의 실패는 거의 전부 <strong>"md 에 적어뒀지만 아무도 검사하지 않는 것"</strong> 이었다.</p>
+		</div>
+
+		<p>
+			새 기능을 넣어서 좋아진 게 아닙니다. 이미 존재하던 지시·도구를 <strong>검사 가능한 형태로 코드에 옮긴</strong>
+			것만으로 개입 5회 → 0회, 방어 실패 → 성공이 됐습니다. E2E 러너는 처음부터 있었고, 단지 아무도 부르지 않았습니다.
+		</p>
+
+		<p><strong>반영한 것</strong></p>
+		<ul class="t">
+			<li><code>verify</code> 가 E2E 를 직접 실행, 단언 실패 시 전진 차단</li>
+			<li>실패를 <strong>설계결함 / 구현결함 / 검증결함</strong>으로 분류해 해당 페이즈로 되돌림 <span class="dim">(사내 조직 가이드 규약 채택)</span></li>
+			<li>재시도 3회 → 되돌림 → 3회 초과 시 <code>blocked</code> — 라이브락 제거</li>
+			<li>평가 신선도를 <strong>사이클 단위</strong>로 (이전 재작업 회차 평가 재사용 차단)</li>
+			<li>루브릭의 게이트 항목을 <strong>실측값</strong>으로 (하드코딩 만점 제거) · 빈 병합 차단</li>
+			<li>스캐폴드가 제품 단계 진입 준비 완료 상태로 복사됨</li>
+		</ul>
+
+		<p><strong>남은 최우선 3가지</strong></p>
+		<ul class="t">
+			<li><strong>페이즈 산출물 게이트</strong> — 에이전트 페이즈(design·implement·evaluate·debate)는 아직 산출물 없이 전진한다</li>
+			<li><strong>루브릭</strong> — 여전히 빈 스캐폴드에 100점을 준다. 육안 판정을 스키마로 받고 수용기준 차원을 추가해야 한다</li>
+			<li><strong><code>plan.json</code></strong> — 요구사항→AC→E2E 추적성이 없어 "AC 4/4" 를 사람이 세고 있다</li>
+		</ul>
+
+		<div class="closing">
+			<p class="dim">
+				복원 지점: <code>snapshot/pre-v3-2026-08-10</code> · 태그 <code>v2-final</code> ·
+				상세 기록: <code>docs/testbench/results.md</code> · <code>bench/TRIAL-LOG.md</code>
+			</p>
+		</div>
+	</section>
+</div>
