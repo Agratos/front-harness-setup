@@ -18,3 +18,7 @@ harness/state.json
 
 # 하네스 사이클 로그(페이즈마다 변동 — merge 체크아웃 충돌 방지, state.json 과 동일 성격)
 harness/cycles/cycle-log.ndjson
+
+# 결정적 게이트 실측 결과(페이즈마다 변동 — state.json 과 동일 성격. 사이클 스탬프로 신선도를 보므로
+# 커밋할 이유가 없고, 커밋하면 merge 체크아웃 때 충돌한다)
+harness/gate-status.json

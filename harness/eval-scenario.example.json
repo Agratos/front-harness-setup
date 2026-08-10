@@ -1,5 +1,6 @@
 {
-  "_doc": "상호작용(E2E) 시나리오 스펙 예시. `node scripts/eval-scenario.mjs` 가 dev 서버+Playwright 로 실제 실행한다. 이 파일을 harness/eval-scenario.json 으로 복사해 프로젝트 유스케이스에 맞게 작성. 액션: fill/select(Mantine)/click. 단언: textVisible/textGone/inputEmpty/inputValue/minCount.",
+  "_doc": "상호작용(E2E) 시나리오 스펙 예시. `node scripts/eval-scenario.mjs` 가 dev 서버+Playwright 로 실제 실행한다. 이 파일을 harness/eval-scenario.json 으로 복사해 프로젝트 유스케이스에 맞게 작성. 액션: fill/select(Mantine)/click/clickText/check/uncheck. 단언: textVisible/textGone/inputEmpty/inputValue/minCount/checked/unchecked.",
+  "_required": "harness/eval-scenario.json 이 없으면 verify 가 exit 2(검증 불가)로 실패한다 — 예전처럼 조용히 통과하지 않는다. 상호작용이 없는 step 은 면제를 명시할 것: { \"scenarios\": [], \"skipReason\": \"이 step 은 DTO 타입 정리만 — 화면 변경 없음\" }",
   "scenarios": [
     {
       "name": "예시: 항목 추가 → 폼 초기화 → 다른 값으로 재추가",

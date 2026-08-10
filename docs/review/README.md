@@ -4,8 +4,10 @@ v2 하네스 전량 리뷰와 v3 목표 설계. HTML 은 브라우저로 열어 
 
 | 문서 | 내용 |
 | --- | --- |
-| [harness-review-2026-08-10.html](harness-review-2026-08-10.html) | **진단** — 발견 14건(F1~F14), 근거(file:line), 우선순위 로드맵 |
+| [harness-review-2026-08-10.html](harness-review-2026-08-10.html) | **1차 진단** — 발견 14건(F1~F14), 근거(file:line), 우선순위 로드맵 |
 | [harness-target-design.html](harness-target-design.html) | **목표 설계** — 작업 지시서 · 세 축(강제/목적/조작성) · 5단계 전환 경로 |
+| [harness-trials-2026-08-10.html](harness-trials-2026-08-10.html) | **시험 결과** — 테스트벤치 4회 반복 시행(개입 5→0, 상호작용 버그 방어 성공) |
+| [self-audit-2026-08-10.md](self-audit-2026-08-10.md) | **2차 자기진단** — 1단계 이후 남은 구멍 12건(F15~F26) + 뿌리 패턴 3가지 |
 
 ## 한 줄 요약
 
@@ -19,12 +21,15 @@ v2 하네스 전량 리뷰와 v3 목표 설계. HTML 은 브라우저로 열어 
 | 단계 | 내용 | 상태 |
 | --- | --- | --- |
 | 1 | **안전망** — gatesGreen 실측 · cycleId 신선도 · 빈 병합 차단 · 실패 라우팅/blocked | ✅ 완료 |
+| 1.5 | **fail-open 반전 + evaluate 코드 강제** — 2차 자기진단(F15~F26) 반영 | ✅ 완료 (11/12건) |
 | 2 | 계약 — `phases.mjs` 페이즈 계약 + 산출물 게이트 | 대기 |
 | 3 | 목적 — `plan.json` 수용기준 + AC↔E2E 매핑 + 체크리스트 판정 | 대기 |
 | 4 | 조작성 — 작업 지시서(`harness next/done`) + hooks + 커맨드 3개 | 대기 |
 | 5 | 정리 — Notion 코드화 · check-arch 확장 · 골든 픽스처 CI | 대기 |
 
-검증은 [`docs/testbench/`](../testbench/) 의 고정 사양(프로젝트 관리 프로그램)으로 4회 반복 시행해 비교한다.
+검증은 [`docs/testbench/`](../testbench/) 의 고정 사양(프로젝트 관리 프로그램)으로 반복 시행해 비교한다.
+4회 시행으로 1단계 효과는 실증됐고([시험 결과](harness-trials-2026-08-10.html)), 남은 구멍은
+[2차 자기진단](self-audit-2026-08-10.md)이 F15~F26 으로 정리했다. 시행 5는 그 구멍들의 방어 실험으로 설계한다.
 
 ## 외부 참고 — 사내 멀티에이전트 조직 가이드
 

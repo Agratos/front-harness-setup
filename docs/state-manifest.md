@@ -27,7 +27,9 @@
 | `failures`         | `Record<string, number>`                     | 결정적 페이즈(`verify`/`merge`)의 **연속** 실패 횟수. 성공하면 해당 키가 0 으로 리셋됩니다. `MAX_PHASE_RETRY(=3)` 도달 시 같은 자리에 머무르지 않고 결함 분류에 따라 되돌립니다. step 이 바뀌면 `{}` 로 초기화. |
 | `escalations`      | `number`                                     | 되돌림(에스컬레이션) 횟수. `MAX_ESCALATION(=3)` 초과 시 `status='blocked'` 로 항복합니다. step 이 바뀌면 0 으로 초기화. 초기값 `0`.                  |
 | `blockedReason`    | `string \| null`                             | `status='blocked'` 사유(사람이 읽는 한 줄). 상세는 `harness/errors/` 최신 항목. 그 외 상태에서는 `null`.                                            |
-| `status`           | `'init' \| 'running' \| 'blocked' \| 'done'` | 실행 전체 상태. 초기값 `'init'`. `blocked` 는 자동 복구 포기 상태이며 `node scripts/loop.mjs --resume` 으로만 해제됩니다.                            |
+| `blockedAt`        | `string \| null`                             | `blocked` 시점의 저장소 지문(`HEAD|diff --shortstat|status --porcelain`). `--resume` 이 **조치 없이 재개**하는지 판정하는 근거입니다. 지문이 그대로면 재개를 거부합니다(강제는 `--resume --force`). git 을 쓸 수 없으면 `null`(검사 생략). |
+| `lastExecutedPhaseSeq` | `number \| null`                         | **실행에 착수한** `phaseSeq`. `loop.mjs` 가 페이즈를 돌리기 **직전**에 기록합니다. 정상 완료하면 `advancePhase` 가 `phaseSeq` 를 올려 `lastExecutedPhaseSeq < phaseSeq` 가 되고, 실행 중 크래시하면 두 값이 같은 채로 남습니다 → `wasInterrupted(state)` 가 이를 잡아 같은 페이즈를 RERUN 합니다. |
+| `status`           | `'init' \| 'running' \| 'blocked' \| 'done'` | 실행 전체 상태. 초기값 `'init'`. `blocked` 는 자동 복구 포기 상태이며 `node scripts/loop.mjs --resume` 으로만 해제됩니다(조치 증거 필요 — `blockedAt` 참조).                            |
 
 ### 사이클 식별자 (`cycleId`) — 신선도의 단위
 
@@ -103,13 +105,24 @@
 
 핵심 규칙: **"state 가 진실이다. 미커밋이면 재실행한다."**
 
-`needsRerun(state)` 는 다음을 만족할 때 `true` 를 반환합니다.
+재실행 필요 판정은 **두 함수의 OR** 입니다 (`loop.mjs`: `needsRerun(state) || wasInterrupted(state)`).
 
 ```
-phase 가 done 으로 간주됨  AND  committed === false
+needsRerun     : phase 가 done 으로 간주됨      AND  committed === false
+wasInterrupted : lastExecutedPhaseSeq === phaseSeq  AND  committed === false
 ```
 
-여기서 "phase done" 은 `status === 'done'` 이거나, `planSteps.length > 0` 이고 `currentStepIdx >= planSteps.length`(모든 단계 소진)인 경우입니다.
+`needsRerun` 의 "phase done" 은 `status === 'done'` 이거나 `planSteps.length > 0` 이고 `currentStepIdx >= planSteps.length`(모든 단계 소진)인 경우입니다.
+
+> ⚠️ **`needsRerun` 만으로는 부족했다** (2차 자기진단 F21). 두 트리거 조건은 드라이버 자신의 전이로는
+> 도달할 수 없습니다 — `status='done'` 은 `runOnce` 가 더 앞에서 조기 return 하고, `nextTransition` 은
+> `currentStepIdx` 를 `planSteps.length` 까지 올리지 않습니다. 그래서 상태를 손으로 주입하는
+> `resume.selftest.mjs` 에서는 동작했지만 **실제 운영 중 RERUN 이 한 번도 표시되지 않았습니다.**
+>
+> `wasInterrupted` 가 그 구멍을 메웁니다. `loop.mjs` 는 페이즈를 **실행하기 직전**
+> `lastExecutedPhaseSeq = phaseSeq` 를 원자적으로 기록합니다. 정상 완료 시 `advancePhase` 가
+> `phaseSeq` 를 올리므로 두 값이 갈라지고, 실행 도중 죽으면 같은 값으로 남아 크래시가 드러납니다.
+> 검증: `node scripts/loop.selftest.mjs`(시나리오 G-5).
 
 ### 왜 필요한가 — rename↔commit 사이 크래시
 
