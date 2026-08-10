@@ -18,6 +18,7 @@
 		"reset": "node scripts/reset-project.mjs",
 		"copy": "node scripts/copy-project.mjs",
 		"notion:flush": "node scripts/notion-flush.mjs",
+		"notion:storyboard": "node scripts/notion-storyboard.mjs",
 		"eval:scenario": "node scripts/eval-scenario.mjs"
 	},
 	"dependencies": {

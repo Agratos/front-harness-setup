@@ -87,6 +87,109 @@ async function addComment(pageId, token, text) {
 	return notionFetch('POST', `${API}/comments`, token, { parent: { page_id: pageId }, rich_text: richText(text) });
 }
 
+// ───────────────────────── 스토리보드 이미지 업로드/첨부 (File Upload API) ─────────────────────────
+// MCP 커넥터는 파일 업로드를 못 한다(§8). 그래서 eval-scenario 캡처 PNG 를 Notion 에 띄우려면
+// File Upload API 로 직접 올려야 한다. 흐름(PoC 로 실증):
+//   1) POST /v1/file_uploads {mode:single_part, filename, content_type} → {id, upload_url}
+//   2) POST {upload_url}  multipart/form-data 'file'=PNG 바이트            → {status:'uploaded'}
+//   3) image 블록 {type:'file_upload', file_upload:{id}} 으로 페이지/행에 첨부 → S3 URL 자동 렌더
+// Node 18+ 글로벌 fetch/FormData/Blob 만 사용(외부 의존성 0).
+
+/** storyboard 단계 1건 → 캡션 문자열(순수). */
+export function storyboardCaption(item, index) {
+	const n = String(index ?? 0).padStart(2, '0');
+	const ok = item?.ok === false ? 'FAIL' : 'ok';
+	return `${n} · ${item?.kind ?? '?'} — ${item?.detail ?? ''} [${ok}]`;
+}
+
+/** scenario.json 의 한 시나리오 → 업로드 항목 [{file, caption}] (순수). shotsDir 기준 절대경로. */
+export function storyboardItems(scenario, shotsDir) {
+	const items = [];
+	if (scenario?.initialShot) items.push({ file: path.join(shotsDir, path.basename(scenario.initialShot)), caption: '00 · 초기 상태' });
+	for (const [i, s] of (scenario?.storyboard ?? []).entries()) {
+		if (!s?.shot) continue;
+		items.push({ file: path.join(shotsDir, path.basename(s.shot)), caption: storyboardCaption(s, i + 1) });
+	}
+	return items;
+}
+
+/** 업로드된 [{id, caption}] → Notion image 블록 배열(순수). */
+export function imageBlocks(uploaded) {
+	return uploaded.map((u) => ({
+		object: 'block',
+		type: 'image',
+		image: { type: 'file_upload', file_upload: { id: u.id }, caption: richText(u.caption ?? '') },
+	}));
+}
+
+/** 첨부 멱등 마커(callout 텍스트) — 재실행 시 중복 첨부 방지에 사용(순수). */
+export function storyboardMarker(id, title) {
+	return `🧪 스토리보드:${id}${title ? ` — ${title}` : ''}`;
+}
+
+/** PNG 1장을 File Upload API 로 올리고 file_upload id 반환(2단계). 실패 시 throw. */
+export async function uploadFile(filePath, token) {
+	const filename = path.basename(filePath);
+	const created = await notionFetch('POST', `${API}/file_uploads`, token, { mode: 'single_part', filename, content_type: 'image/png' });
+	if (!created.ok || !created.json?.id) throw new Error(`file_uploads create 실패(${filename}): ${created.status} ${JSON.stringify(created.json)?.slice(0, 200)}`);
+	const id = created.json.id;
+	const uploadUrl = created.json.upload_url || `${API}/file_uploads/${id}/send`;
+	const buf = readFileSync(filePath);
+	const fd = new FormData();
+	fd.set('file', new Blob([buf], { type: 'image/png' }), filename);
+	// send 는 multipart — Content-Type 을 직접 넣지 않는다(fetch 가 boundary 와 함께 자동 설정).
+	const res = await fetch(uploadUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION }, body: fd });
+	const json = await res.json().catch(() => null);
+	if (!res.ok || json?.status !== 'uploaded') throw new Error(`file send 실패(${filename}): ${res.status} status=${json?.status}`);
+	return id;
+}
+
+/** 페이지/행(pageId)에 자식 블록을 추가한다(100개 초과 시 90개씩 배치). */
+async function appendChildren(pageId, token, blocks) {
+	for (let i = 0; i < blocks.length; i += 90) {
+		const chunk = blocks.slice(i, i + 90);
+		const r = await notionFetch('PATCH', `${API}/blocks/${pageId}/children`, token, { children: chunk });
+		if (!r.ok) return { ok: false, status: r.status, json: r.json };
+	}
+	return { ok: true };
+}
+
+/**
+ * 스토리보드 캡처를 한 페이지(보통 🧪 테스트 관리 행)의 본문에 이미지로 첨부한다.
+ * - 멱등: 같은 마커 callout 이 이미 있으면 skip(재실행 안전).
+ * - best-effort: pageId/token/items 부족하거나 네트워크 실패 시 {ok:false, reason}.
+ * @param {string} pageId 첨부 대상(행/페이지) id
+ * @param {Array<{file:string, caption:string}>} items
+ * @param {string} token
+ * @param {{id?:string, title?:string}} [opts]
+ */
+export async function attachStoryboard(pageId, items, token, opts = {}) {
+	if (!pageId) return { ok: false, reason: 'pageId 없음' };
+	if (!token) return { ok: false, reason: 'token 없음' };
+	const marker = storyboardMarker(opts.id ?? '', opts.title);
+	// 멱등: 이미 첨부된 행이면 다시 올리지 않는다.
+	const existing = await notionFetch('GET', `${API}/blocks/${pageId}/children?page_size=100`, token);
+	if (existing.ok) {
+		const dup = (existing.json?.results ?? []).some(
+			(b) => b.type === 'callout' && (b.callout?.rich_text ?? []).some((r) => (r.plain_text ?? r.text?.content ?? '').startsWith(`🧪 스토리보드:${opts.id ?? ''}`)),
+		);
+		if (dup) return { ok: true, skipped: true, reason: 'already-attached', attached: 0 };
+	}
+	const uploaded = [];
+	for (const it of items) {
+		if (!existsSync(it.file)) continue;
+		const id = await uploadFile(it.file, token);
+		uploaded.push({ id, caption: it.caption });
+	}
+	if (uploaded.length === 0) return { ok: false, reason: '업로드할 PNG 없음' };
+	const blocks = [
+		{ object: 'block', type: 'callout', callout: { rich_text: richText(marker), icon: { emoji: '🧪' }, color: 'blue_background' } },
+		...imageBlocks(uploaded),
+	];
+	const r = await appendChildren(pageId, token, blocks);
+	return r.ok ? { ok: true, attached: uploaded.length } : { ok: false, reason: `children append 실패: ${r.status}`, status: r.status };
+}
+
 /**
  * 페이로드 1건을 실제 Notion 에 반영한다.
  * @returns {Promise<{ok:boolean, [k:string]:any}>}
@@ -161,4 +264,16 @@ export async function flushOutbox(repoRoot) {
 	return { skipped: false, sent, failed };
 }
 
-export default { flushOutbox, applyPayload, summarizeDashboard, richText, resolveToken };
+export default {
+	flushOutbox,
+	applyPayload,
+	summarizeDashboard,
+	richText,
+	resolveToken,
+	uploadFile,
+	attachStoryboard,
+	storyboardItems,
+	storyboardCaption,
+	storyboardMarker,
+	imageBlocks,
+};

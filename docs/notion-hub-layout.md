@@ -30,6 +30,7 @@
    📋 하네스 계획   → top-3 불릿 + 인라인 DB
    🔄 진행 상황     → top-3 불릿 + 인라인 DB(🔄 Cycles)
    🚨 이슈          → top-3 불릿 + 인라인 DB(🚨 이슈 트래커)
+   🧪 테스트        → top-3 불릿 + 인라인 DB(🧪 테스트 관리)
    🚀 배포 관리     → top-3 불릿 + 인라인 DB
    🤖 에이전트 설명 → 안내문 + 인라인 DB(👥 Team Roster)
    📝 회의록        → 안내문 + 인라인 DB(📝 Meeting Notes)
@@ -37,7 +38,7 @@
 ```
 
 - 각 섹션 = `## `(h2) 헤더 + 인라인 DB. 섹션 사이는 `---`.
-- **각 데이터 섹션(계획·진행 상황·이슈·배포)은 DB 블록 바로 위에 "top-3 불릿"** 을 둠 — 그 섹션에서 지금 중요한 상위 3개(진행 중·열림 우선)를 한눈에 보여주고, 전체는 아래 인라인 DB로 확인(§1.1).
+- **각 데이터 섹션(계획·진행 상황·이슈·테스트·배포)은 DB 블록 바로 위에 "top-3 불릿"** 을 둠 — 그 섹션에서 지금 중요한 상위 3개(진행 중·열림 우선)를 한눈에 보여주고, 전체는 아래 인라인 DB로 확인(§1.1).
 - DB 간 **relation**으로 서로 연결(§3)되어 클릭으로 오갈 수 있음.
 
 ### 1.1 섹션 상단 top-3 불릿 (요약 미리보기)
@@ -49,6 +50,7 @@
 | 📋 하네스 계획 | 진행 중 → 계획 수립 → 최신 요청일시 | `• <요청> — <상태>` |
 | 🔄 진행 상황 | 진행 중 → 번호(최신 사이클) 내림차순 | `• <사이클> — <상태> · 평가 <score>` |
 | 🚨 이슈 | 열림(논의 중·논의 전) → 심각도(P0>P1>P2) | `• <이슈> — <상태>` |
+| 🧪 테스트 | 실패 🔴 → 미실행 ⚪ → 최신 실행일(날짜 내림차순) | `• <테스트> — <유형> · <상태>` |
 | 🚀 배포 관리 | 배포일 내림차순(최신) | `• <버전> (<환경>) — <상태>` |
 
 **자동 갱신 (`run-cycle.md` §Notion 허브 갱신):** 오케스트레이터가 어떤 섹션 DB에 행을 쓸 때마다, 그 섹션 top-3를 다시 뽑아 **불릿 블록을 통째로 재작성**한다(커넥터, 의도된 자동화).
@@ -59,6 +61,7 @@
 - 📋 계획: 차량 검수 이력 조회(진행 중) · 검수자 대시보드 위젯(계획 수립) · PDF 리포트(대기)
 - 🔄 진행 상황: 사이클 5(진행 중) · 사이클 4(완료 · 평가 8) · 사이클 3(완료 · 평가 8.5)
 - 🚨 이슈: 상태·날짜 동시 필터 누락(논의 중) · 빈 목록 깜빡임(논의 전) · 직렬화 오류(해결)
+- 🧪 테스트: 상태·날짜 동시 필터(상호작용 · 실패) · 페이지네이션 빈목록(상호작용 · 미실행) · done-gate 게이트(결정적 게이트 · 통과)
 - 🚀 배포: v0.2.1(staging) · v0.2.0(staging) · v0.1.0(dev) — 모두 성공
 
 ---
@@ -206,8 +209,8 @@
 ```
 > 결론이 나면 `결론` 필드를 update + `상태`→`해결`. 본문 회의는 `notion-update-page` `insert_content`로 `### 회의 N`을 덧붙입니다.
 
-### 🧪 테스트 관리
-- 인라인 DB (ds ID 는 허브 fetch 로 확인 — 프로젝트마다 다름). **배치: 진행 상황 또는 이슈 아래**(인라인 DB 위치는 UI 드래그로 조정 — API 이동 불가, §8).
+### 🧪 테스트 (DB 제목: 🧪 테스트 관리)
+- `## 🧪 테스트` 섹션 헤더 + **top-3 불릿(§1.1)** + 인라인 DB. **배치: 🚨 이슈 와 🚀 배포 관리 사이**(인라인 DB 위치는 UI 드래그로 조정 — API 이동 불가, §8). ds ID 는 허브 fetch 로 확인(프로젝트마다 다름).
 
 **한 행 = 한 테스트(기능/시나리오)의 1회 실행 결과.** qa(`.claude/agents/qa.md`)가 매 사이클 결정적 게이트·상호작용(E2E)·평가·단위 테스트 결과를 통과/실패로 적는다 — *"모든 기능이 테스트됐고 통과했나"* 의 단일 원장.
 
@@ -222,6 +225,11 @@
 
 - **상호작용 + 스토리보드 (⭐ 핵심)**: `scripts/eval-scenario.mjs` 가 시나리오(액션 `fill`/`click`/`check`/`clickText` + 단언 `textVisible`/`inputEmpty`/`checked`/…)를 dev 서버+Playwright 로 **실제 실행**하고, **각 단계마다 화면을 캡처**(`harness/evaluations/<id>/s<scn>-<step>.png`, 초기 `s<scn>-00-initial.png`)해 **클릭→실제 상태 변화**(예: 토글 후 진행률 0%→50%)를 시각 증거로 남긴다. 결과 `<id>/scenario.json` 의 `storyboard` = 단계별 동작·단언·캡처 경로 → **사용자 가이드처럼 전체 flow 가 통과하는지** 확인.
 - 정적 평가(eval-playwright/B3)가 못 보는 상호작용을 잡고, 그 결과를 이 DB 에 통과/실패로 누적한다.
+- **🖼 스토리보드 이미지 첨부 (⭐ 캡처를 Notion 에 실제로 띄운다)**: 캡처 PNG 는 로컬에만 저장되고 **MCP 커넥터는 파일 업로드 불가**(§8)라, 행을 만든 것만으론 페이지에 사진이 안 보인다. 그래서 **행 본문에 캡처를 image 블록으로 붙이는 단계**를 둔다:
+  1. qa 가 MCP(`notion-create-pages`)로 🧪 테스트 관리 행을 만들고 **그 행의 page id** 를 받는다.
+  2. `node scripts/notion-storyboard.mjs --id=<scenId> --row=<행 page id>` 실행 → `scenario.json` 의 storyboard PNG 들을 **File Upload API** 로 올려(§8) 행 본문에 단계별 image 블록(+캡션 `NN · 동작 — 단언 [ok/FAIL]`)으로 첨부. 맨 위 `🧪 스토리보드:<id>` callout 이 **멱등 마커**(재실행 시 중복 첨부 방지).
+  3. 결과: 행을 열면 **초기 → 각 단계 화면**이 사용자 가이드처럼 쭉 보인다. (업로드 PNG 는 Notion S3 에 호스팅돼 렌더 — 외부 URL 불필요.)
+  - 게이트: `useMcp!=true` / `NOTION_TOKEN` 없음 / 스펙 없음이면 조용히 skip(루프 미차단). Node 18+ 글로벌 `fetch`/`FormData`/`Blob` 만 사용(외부 의존성 0).
 
 ### 🚀 배포 관리
 - DB `d4a05d7cde478278be3e019c78f273d1` · ds `8be05d7c-de47-832e-8cb5-870d0cd6e2f6`
@@ -334,6 +342,7 @@
 | 뷰 설정(표시 컬럼·정렬·줄바꿈) | ✅ | `notion-update-view` `configure:`(SHOW/SORT/WRAP CELLS) |
 | 데이터소스 휴지통/복원 | ✅ | `notion-update-data-source` `in_trash:true/false` (단 페이지 블록 복원은 UI가 확실) |
 | 댓글 추가 | ✅ | `notion-create-comment` (단 삭제 불가 → 회의는 본문 사용) |
+| **파일/이미지 업로드** | ✅ (REST only) | MCP 미지원 → **File Upload API**(`scripts/notion-storyboard.mjs`, `lib/notion-api.uploadFile`): ① `POST /v1/file_uploads {mode:single_part,filename,content_type}`→`{id,upload_url}` ② `POST {upload_url}` multipart `file`=바이트 ③ image 블록 `{type:'file_upload',file_upload:{id}}` 첨부. PNG≤20MB single_part. 토큰은 `.env`. |
 | DB 행 **조회/삭제** | ❌ | query·trash 도구 미노출 → Notion UI |
 | 인라인 DB 블록 **위치 이동**, 컬럼 폭 | ❌ | UI 전용 (커넥터 시도 시 중복 DB 양산 이력 — 금지) |
 

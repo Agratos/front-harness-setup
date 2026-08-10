@@ -36,7 +36,7 @@ jobs:
       - name: Test
         run: yarn test --run
 
-      # ── 하네스 자가검증 11종 ─────────────────────────────────────────
+      # ── 하네스 자가검증 12종 ─────────────────────────────────────────
       - name: Self-tests
         run: |
           node scripts/lib/state.selftest.mjs
@@ -49,4 +49,5 @@ jobs:
           node scripts/reset-project.selftest.mjs
           node scripts/copy-project.selftest.mjs
           node scripts/notion-api.selftest.mjs
+          node scripts/notion-storyboard.selftest.mjs
           node scripts/init-project.selftest.mjs

@@ -20,6 +20,7 @@ typecheck / lint / test / check-arch (결정적 게이트)를 실행해 판정�
 - 실행: `node scripts/eval-scenario.mjs --id=scen-<id>`. 실패 단언 → **기능 결함(major)** 으로 `harness/errors/`·평가에 기록 → done-gate FAIL → rework. (스펙/Playwright/서버 부재 시 skip — 차단 안 함)
 - **스토리보드**: 러너가 **각 단계마다 화면을 캡처**(`evaluations/<id>/s<scn>-<step>.png`)한다 — 클릭→실제 변화(예: 토글 후 상태)를 시각 증거로 남겨 사용자 가이드처럼 flow 전체를 확인. `<id>/scenario.json` 의 `storyboard` 참조.
 - **🧪 테스트 관리 DB 기록(Notion)**: 매 사이클 각 테스트(결정적 게이트·상호작용·평가·단위)의 통과/실패를 허브의 `🧪 테스트 관리` DB 에 행으로 적는다(유형·상태·사이클 relation·결과). *"모든 기능이 테스트됐고 통과했나"* 를 한눈에. (`docs/notion-hub-layout.md §4`)
+- **🖼 스토리보드 이미지 첨부 (⭐ 캡처를 행에 띄운다)**: 상호작용 테스트 행을 만들 때, 캡처가 페이지에 **실제로 보이도록** 행 본문에 이미지로 붙인다. ① MCP(`notion-create-pages`)로 행 생성 → **그 행 page id 확보** → ② `node scripts/notion-storyboard.mjs --id=<scenId> --row=<행 page id>` 실행(File Upload API 로 storyboard PNG 업로드+첨부, 멱등). MCP 는 파일 업로드를 못 하므로 이 단계가 없으면 행만 있고 사진은 비어 보인다. (`docs/notion-hub-layout.md §4·§8`)
 
 ## 입력
 
