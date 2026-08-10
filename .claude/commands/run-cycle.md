@@ -62,7 +62,20 @@
 >
 > ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키면 **평가 무효**(실제 사고: 사이드 padding 없는 UI 가 96점 통과). `config.useMcp=false`/Playwright 미설치일 때만 정적 폴백.
 
-## verify/QA — 상호작용(E2E) 검증 ⛔ (무조건)
+## verify/QA — 상호작용(E2E) 검증 ✅ (이제 코드 강제)
+
+> ✅ **드라이버가 자동으로 실행한다.** `verify` 페이즈는 `done-gate --deterministic-only` 통과 후
+> **`node scripts/eval-scenario.mjs --id=scen-<cycleId>` 를 이어서 실행**하고, 단언이 하나라도 실패하면
+> **전진을 차단**한다(결함분류: 게이트 green + E2E 실패 = **구현결함** → `implement` 되돌림).
+> 오케스트레이터가 잊어버릴 수 있는 지점이 아니다. 스펙/Playwright/서버가 없으면 러너가 스스로 skip 한다.
+>
+> 📌 **왜 코드로 옮겼나 (테스트벤치 실측)**: `e.currentTarget` 을 setState 업데이터 안에서 읽어
+> **두 번째 입력에 앱이 통째로 죽는** 버그가 typecheck·lint·check-arch·**단위테스트 10개**를 전부 통과하고
+> 루브릭 평가마저 **100점/major 0** 을 받았다(`eval-playwright` 는 조작을 안 하므로 초기 렌더만 본다).
+> 오직 `eval-scenario` 만 잡았다. 배선이 없으면 **죽은 앱이 만점으로 병합된다.**
+> 상세: `docs/testbench/results.md` 시행 1.
+
+아래는 **시나리오 스펙을 무엇으로 채울지**에 대한 지침이다(스펙 작성은 여전히 에이전트 몫).
 
 > ⛔ **단위 테스트·정적 렌더만으로 "동작"을 통과시키지 않는다.** QA(`.claude/agents/qa.md`)/오케스트레이터는 핵심 유스케이스를 **실제로 조작**해 단언한다: `node scripts/eval-scenario.mjs`(dev 서버 + Playwright). 스펙 `harness/eval-scenario.json` = 액션(`fill`/`select`/`click`) + 단언(`textVisible`/**`inputEmpty`**/`inputValue`/`minCount`/`textGone`).
 >

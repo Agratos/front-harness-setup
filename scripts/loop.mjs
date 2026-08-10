@@ -211,6 +211,15 @@ export function classifyFailure(phase, gateStatus) {
 			why: '결정적 게이트는 green — 평가 임계 미달 또는 stale 평가로 판단',
 		};
 	}
+	// verify 인데 결정적 게이트가 green 이었다면, 실패 원인은 상호작용(E2E) 단언이다.
+	// 화면은 뜨는데 **조작하면 기대대로 동작하지 않는** 상태 = 구현결함.
+	if (phase === 'verify' && gateStatus && gateStatus.passed === true) {
+		return {
+			kind: '구현결함',
+			nextPhase: 'implement',
+			why: '결정적 게이트는 green — 상호작용(E2E) 단언 실패로 판단(eval-scenario)',
+		};
+	}
 	if (failedGates.includes('check-arch')) {
 		return {
 			kind: '설계결함',
@@ -277,7 +286,26 @@ function runDeterministicPhase(phase, state, repoRoot) {
 		const gate = path.join(repoRoot, 'scripts', 'done-gate.mjs');
 		if (!existsSync(gate)) return { ok: true, note: 'done-gate.mjs 없음 → verify 통과 처리(merge 에서 재검증)' };
 		const r = runNode([gate, '--deterministic-only'], repoRoot);
-		return { ok: r.code === 0, note: `done-gate --deterministic-only exit ${r.code}` };
+		if (r.code !== 0) return { ok: false, note: `done-gate --deterministic-only exit ${r.code}` };
+
+		// ⛔ 상호작용(E2E) 검증 — 결정적 게이트 통과 후 **반드시** 실행한다.
+		//
+		// 왜 코드로 옮겼나: 예전에는 "⛔ 무조건 실행" 이 md 3곳(run-cycle·qa·usage)에만 있었고
+		// 어떤 스크립트도 호출하지 않았다. 테스트벤치 시행 1에서 실측된 결과 —
+		// setState 업데이터 안에서 e.currentTarget 을 읽어 **두 번째 입력에 앱이 통째로 죽는** 버그가
+		// typecheck·lint·check-arch·단위테스트 10개를 전부 통과하고 루브릭 평가마저 **100점/major 0**
+		// 을 받았다(eval-playwright 는 조작을 안 하므로 초기 렌더만 본다). 오직 eval-scenario 만 잡았다.
+		// 즉 이 배선이 없으면 **죽은 앱이 만점으로 병합된다.**
+		//
+		// 스펙/Playwright/서버 부재 시 eval-scenario 는 스스로 exit 0(skip) 하므로 자율 흐름은 막지 않는다.
+		const scen = path.join(repoRoot, 'scripts', 'eval-scenario.mjs');
+		if (!existsSync(scen)) return { ok: true, note: `done-gate ok / eval-scenario.mjs 없음 → 상호작용 검증 생략` };
+		const scenId = `scen-${cycleIdOf(state).replace('#', '-r')}`;
+		const s = runNode([scen, `--id=${scenId}`], repoRoot);
+		if (s.code !== 0) {
+			return { ok: false, note: `done-gate ok / eval-scenario(${scenId}) exit ${s.code} — 상호작용 단언 실패(기능 결함)` };
+		}
+		return { ok: true, note: `done-gate --deterministic-only ok + eval-scenario(${scenId}) ok` };
 	}
 	if (phase === 'merge') {
 		const gitFlow = path.join(repoRoot, 'scripts', 'git-flow.mjs');
