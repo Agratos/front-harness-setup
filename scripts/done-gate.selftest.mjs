@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { runDoneGate, evaluateHysteresis, ENTER_THRESHOLD, HOLD_THRESHOLD } from './done-gate.mjs';
+import { runDoneGate, evaluateHysteresis, readGateStatus, writeGateStatus, ENTER_THRESHOLD, HOLD_THRESHOLD } from './done-gate.mjs';
 import { defaultState, readState, stateFilePath, writeState } from './lib/state.mjs';
 
 const failures = [];
@@ -112,19 +112,57 @@ try {
 	const r5 = runGateInjected(tmpDir, 87, 0);
 	check('[5] 래치 후 87 → 탈락(exitCode 1)', r5.exitCode === 1);
 
-	// 6) freshness 게이트 — 파일 기반 평가는 현재 step 의 것이어야 통과 (stale 가짜 통과 차단)
+	// 6) freshness 게이트 — 파일 기반 평가는 **이번 사이클(step + 재작업 회차)** 의 것이어야 통과.
+	//    1세대는 stepId 만 비교해, 같은 step 안에서 재작업 1회차 평가가 3회차 merge 를 통과시켰다.
+	//    이제 cycleId(`step-<idx>#<rework>`)로 비교한다.
 	const evalDir = path.join(tmpDir, 'harness', 'evaluations');
 	mkdirSync(evalDir, { recursive: true });
-	// (a) stepId 없는 stale 평가(score 100) → 거부
+	// (a) 스탬프 없는 stale 평가(score 100) → 거부
 	writeFileSync(path.join(evalDir, 'eval-0001.json'), JSON.stringify({ id: 'eval-0001', score: 100, majorComplaints: 0 }) + '\n', 'utf8');
 	const rStale = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
-	check('[6a] stepId 없는 stale 평가(100) → 거부(exit 1)', rStale.exitCode === 1);
+	check('[6a] 스탬프 없는 stale 평가(100) → 거부(exit 1)', rStale.exitCode === 1);
 	check('[6a] 거부 사유에 "stale 평가 거부" 표기', /stale 평가 거부/.test(rStale.result.hysteresis?.reason ?? ''));
-	// (b) 현재 step(step-0) 의 신선한 평가(95) → 통과
+
+	// (b) 구 형식(stepId 만 있고 cycleId 없음) → 거부. 하위호환으로 몰래 통과시키지 않는다.
 	writeFileSync(path.join(evalDir, 'eval-0002.json'), JSON.stringify({ id: 'eval-0002', stepId: 'step-0', score: 95, majorComplaints: 0 }) + '\n', 'utf8');
+	const rLegacy = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
+	check('[6b] 구 형식(cycleId 없음) 평가 → 거부(exit 1)', rLegacy.exitCode === 1);
+	check('[6b] 거부 사유에 "구 형식" 표기', /구 형식/.test(rLegacy.result.hysteresis?.reason ?? ''));
+
+	// (c) 이번 사이클(step-0#0) 신선 평가(95) → 통과
+	writeFileSync(
+		path.join(evalDir, 'eval-0003.json'),
+		JSON.stringify({ id: 'eval-0003', stepId: 'step-0', cycleId: 'step-0#0', score: 95, majorComplaints: 0 }) + '\n',
+		'utf8',
+	);
 	const rFresh = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
-	check('[6b] 현재 step(step-0) 신선 평가(95) → 통과(exit 0)', rFresh.exitCode === 0);
-	check('[6b] 평가 source=file 로 채택', rFresh.result.evaluation?.source === 'file');
+	check('[6c] 이번 사이클(step-0#0) 신선 평가(95) → 통과(exit 0)', rFresh.exitCode === 0);
+	check('[6c] 평가 source=file 로 채택', rFresh.result.evaluation?.source === 'file');
+
+	// (d) ⭐ 핵심 회귀 — 같은 step 인데 **재작업 회차가 다른** 평가는 거부해야 한다.
+	//     state.reworkCount 를 2 로 올리면 현재 사이클은 step-0#2 이고, 위 평가(step-0#0)는 stale 이다.
+	const stBefore = readState(statePath);
+	writeState(statePath, { ...stBefore, reworkCount: 2 });
+	const rRework = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
+	check('[6d] 같은 step 이전 재작업 회차 평가(step-0#0 vs 현재 #2) → 거부(exit 1)', rRework.exitCode === 1);
+	check('[6d] 거부 사유에 현재 cycleId(step-0#2) 표기', /step-0#2/.test(rRework.result.hysteresis?.reason ?? ''));
+
+	// (e) 그 회차의 신선한 평가를 쓰면 통과
+	writeFileSync(
+		path.join(evalDir, 'eval-0004.json'),
+		JSON.stringify({ id: 'eval-0004', stepId: 'step-0', cycleId: 'step-0#2', score: 95, majorComplaints: 0 }) + '\n',
+		'utf8',
+	);
+	const rReworkFresh = runDoneGate({ json: true, skipDeterministic: true }, tmpDir);
+	check('[6e] 해당 재작업 회차(step-0#2)의 신선 평가 → 통과(exit 0)', rReworkFresh.exitCode === 0);
+
+	// 7) gate-status.json — 결정적 게이트 실측 결과가 사이클 스탬프와 함께 기록되는가
+	//    (평가의 q.gates-green 이 이 파일을 읽는다. 예전엔 gatesGreen:true 하드코딩이었다.)
+	writeGateStatus(tmpDir, { passed: false, gates: [{ name: 'check-arch', ok: false, code: 1 }] });
+	const gs = readGateStatus(tmpDir, 'step-0#2');
+	check('[7] gate-status 가 이번 사이클(step-0#2)로 조회됨', gs !== null && gs.passed === false);
+	check('[7] 실패 게이트 이름 보존', !!gs && gs.gates?.[0]?.name === 'check-arch');
+	check('[7] 다른 사이클로 조회하면 null(stale 차단)', readGateStatus(tmpDir, 'step-9#0') === null);
 } catch (err) {
 	failures.push(`예외: ${err && err.stack ? err.stack : String(err)}`);
 } finally {

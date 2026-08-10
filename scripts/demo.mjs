@@ -23,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { logCycle, logDecision } from './lib/log.mjs';
+import { scoreObservations } from './lib/rubric.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -282,19 +283,66 @@ try {
 // ──────────────────────────────────────────────────────────────────────────
 // 4) 기존 평가(eval-0001) 읽기 확인.
 // ──────────────────────────────────────────────────────────────────────────
-section('4) 기존 평가 읽기 (harness/evaluations/eval-0001)');
+section('4) 평가 채점 파이프라인 (루브릭)');
+// ⚠️ 예전에는 `harness/evaluations/eval-0001.json` 이 **이미 있다고 가정**하고 읽기만 했다.
+// 그런데 그 파일은 추적되지 않는 런타임 산출물이고, `reset-project`/`copy-project` 는
+// **가짜 통과 방지를 위해 이전 평가를 지운다**. 그래서 갓 복사한 새 프로젝트에서 데모는
+// 항상 실패했다(실측: 새 복사본에서 DEMO FAIL). 데모가 초기 상태에서 깨지면 스모크 가치가 없다.
+//
+// 그렇다고 데모가 실제 `harness/evaluations/` 에 평가를 써 넣어서도 안 된다 —
+// 그건 다음 merge 의 done-gate 가 읽어 **가짜 통과**를 만드는 바로 그 오염이다.
+// 따라서: 실제 평가가 있으면 그것을 읽고, 없으면 **격리 디렉터리에서 루브릭 채점만 시연**한다.
 const evalJsonPath = path.join(repoRoot, 'harness', 'evaluations', 'eval-0001.json');
 let evalObj = null;
-const evalExists = existsSync(evalJsonPath);
-check('harness/evaluations/eval-0001.json 존재', evalExists);
-if (evalExists) {
+let evalSource = 'none';
+
+if (existsSync(evalJsonPath)) {
 	try {
 		evalObj = JSON.parse(readFileSync(evalJsonPath, 'utf8'));
+		evalSource = 'repo';
 	} catch {
 		evalObj = null;
 	}
-	check('eval-0001 파싱 + score/majorComplaints 필드 보유', Boolean(evalObj && typeof evalObj.score === 'number' && typeof evalObj.majorComplaints === 'number'), evalObj ? `score=${evalObj.score} major=${evalObj.majorComplaints}` : 'parse fail');
 }
+
+if (!evalObj) {
+	// 격리 시연: 관찰값 → 루브릭 채점 (실제 repo 에 평가 파일을 만들지 않는다)
+	const demoObs = {
+		bodyNonEmpty: true,
+		titleMatches: true,
+		headingPresent: true,
+		consoleErrors: 0,
+		serverReady: true,
+		layoutStable: true,
+		hasViewportMeta: true,
+		responsiveLayout: true,
+		hasLandmarks: true,
+		appMounted: true,
+		runtimeErrors: 0,
+		navigable: true,
+		a11yViolations: 0,
+		gatesGreen: true,
+		screenshotOk: true,
+		observable: true,
+	};
+	const scored = scoreObservations(demoObs);
+	evalObj = {
+		id: 'eval-demo',
+		score: scored.score,
+		majorComplaints: scored.majorComplaints,
+		dimensions: scored.dimensions,
+		complaints: scored.complaints,
+	};
+	evalSource = 'demo-isolated';
+}
+
+check('평가 객체 확보 (repo 산출물 또는 격리 시연)', Boolean(evalObj), `source=${evalSource}`);
+check(
+	'score/majorComplaints 계약 필드 보유',
+	Boolean(evalObj && typeof evalObj.score === 'number' && typeof evalObj.majorComplaints === 'number'),
+	evalObj ? `score=${evalObj.score} major=${evalObj.majorComplaints}` : 'parse fail',
+);
+check('평가가 실제 repo 를 오염시키지 않음', evalSource !== 'demo-isolated' || !existsSync(evalJsonPath));
 
 // ──────────────────────────────────────────────────────────────────────────
 // 5) 최종 보고서 — harness/report.md 채우기 (eval-0001 + 단계 요약 + 미해결 불만 수).

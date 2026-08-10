@@ -27,11 +27,11 @@
 // 종료 코드: 결정적 게이트 통과 AND 평가 임계치(또는 래치) 충족 시에만 exit 0.
 // `--json` 으로 머신리더블 결과를 출력합니다.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { readState, stateFilePath, writeState } from './lib/state.mjs';
+import { cycleIdOf, readState, stateFilePath, stepIdOf, writeState } from './lib/state.mjs';
 import { logError } from './lib/log.mjs';
 
 export const ENTER_THRESHOLD = 90; // 진입(enter) 임계치 — 이 이상이어야 새로 통과
@@ -87,6 +87,62 @@ export function evaluateHysteresis(evaluation, wasLatched) {
 	};
 }
 
+/** harness/gate-status.json 경로 — 결정적 게이트의 **실측 결과** 단일 소스. */
+export function gateStatusPath(repoRoot) {
+	return path.join(repoRoot, 'harness', 'gate-status.json');
+}
+
+/**
+ * 결정적 게이트 결과를 harness/gate-status.json 에 원자적으로 기록한다.
+ *
+ * 왜 파일로 남기나: 평가(eval-playwright)의 루브릭 항목 `q.gates-green` 이 예전엔
+ * `gatesGreen: true` **하드코딩**이라 게이트 실제 상태와 무관하게 항상 만점을 줬다(실측 버그).
+ * 이제 게이트를 실행한 쪽이 결과를 남기고, 평가는 그 **실측값**을 읽는다.
+ * 사이클 스탬프를 함께 남겨 다른 사이클 결과가 재사용되지 않게 한다.
+ *
+ * @param {string} repoRoot
+ * @param {{passed:boolean, gates:Array<{name:string,ok:boolean,code:number}>}} det
+ * @returns {string|null} 기록한 경로 (실패 시 null)
+ */
+export function writeGateStatus(repoRoot, det) {
+	try {
+		const state = readState(stateFilePath(repoRoot));
+		const payload = {
+			passed: det.passed === true,
+			gates: (det.gates ?? []).map((g) => ({ name: g.name, ok: g.ok, code: g.code })),
+			cycleId: cycleIdOf(state),
+			stepId: stepIdOf(state),
+			phaseSeq: state?.phaseSeq ?? null,
+			createdAt: new Date().toISOString(),
+		};
+		const target = gateStatusPath(repoRoot);
+		mkdirSync(path.dirname(target), { recursive: true });
+		const tmp = `${target}.tmp`;
+		writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', 'utf8');
+		renameSync(tmp, target);
+		return target;
+	} catch {
+		// 게이트 판정 자체에는 영향 주지 않는다 (기록 실패는 무시).
+		return null;
+	}
+}
+
+/**
+ * 이번 사이클의 게이트 실측 결과를 읽는다. 사이클이 다르면(stale) null.
+ * @param {string} repoRoot
+ * @param {string} expectedCycleId
+ * @returns {{passed:boolean, gates:Array, cycleId:string}|null}
+ */
+export function readGateStatus(repoRoot, expectedCycleId) {
+	try {
+		const raw = JSON.parse(readFileSync(gateStatusPath(repoRoot), 'utf8'));
+		if (expectedCycleId && raw.cycleId !== expectedCycleId) return null;
+		return raw;
+	} catch {
+		return null;
+	}
+}
+
 /** CLI 인자 파싱: --json --deterministic-only --score=N --major-complaints=N --skip-deterministic */
 function parseArgs(argv) {
 	const opts = {
@@ -97,6 +153,7 @@ function parseArgs(argv) {
 		score: undefined,
 		majorComplaints: undefined,
 		stepId: undefined,
+		cycleId: undefined,
 	};
 	for (const arg of argv) {
 		if (arg === '--json') opts.json = true;
@@ -107,6 +164,7 @@ function parseArgs(argv) {
 		else if (arg.startsWith('--major-complaints='))
 			opts.majorComplaints = Number(arg.slice('--major-complaints='.length));
 		else if (arg.startsWith('--step-id=')) opts.stepId = arg.slice('--step-id='.length);
+		else if (arg.startsWith('--cycle-id=')) opts.cycleId = arg.slice('--cycle-id='.length);
 	}
 	return opts;
 }
@@ -156,6 +214,9 @@ export function runDeterministicGate(repoRoot) {
 	];
 	const passed = gates.every((g) => g.ok);
 
+	// 실측 결과를 파일로 남긴다 — 평가(eval-playwright)의 q.gates-green 이 이 값을 읽는다.
+	writeGateStatus(repoRoot, { passed, gates });
+
 	// 실패한 게이트마다 오류 로그 기록 (성공 게이트는 로그 미생성)
 	for (const g of gates) {
 		if (!g.ok) {
@@ -202,6 +263,7 @@ export function loadLatestEvaluation(repoRoot) {
 			majorComplaints: Number(raw.majorComplaints ?? raw.major ?? 0),
 			id: path.basename(latest, '.json'),
 			stepId: raw.stepId ?? null,
+			cycleId: raw.cycleId ?? null,
 			phaseSeq: raw.phaseSeq ?? null,
 		};
 	} catch {
@@ -281,7 +343,9 @@ export function runDoneGate(opts, repoRoot) {
 	const statePath = stateFilePath(repoRoot);
 	const state = readState(statePath);
 	const stepId = resolveStepId(opts, state);
+	const cycleId = opts.cycleId ?? cycleIdOf(state);
 	result.stepId = stepId;
+	result.cycleId = cycleId;
 
 	const evaluation = resolveEvaluation(opts, repoRoot);
 	if (!evaluation) {
@@ -292,15 +356,18 @@ export function runDoneGate(opts, repoRoot) {
 	}
 	result.evaluation = evaluation;
 
-	// freshness 게이트: 파일 기반 평가는 **현재 step 의 이번 사이클 평가**여야 한다.
-	// 이전에 남은 평가(예: eval-0001 score=100)가 모든 step 을 도장 찍어 "가짜 통과"시키던
-	// 버그를 막는다 — eval JSON 의 stepId 가 현재 step 과 다르면(또는 없으면) 거부.
+	// freshness 게이트: 파일 기반 평가는 **이번 사이클(step + 재작업 회차)의 평가**여야 한다.
+	//
+	// 1세대는 stepId 만 비교했다. 그래서 이전 step 의 평가가 도장을 찍는 사고는 막았지만,
+	// **같은 step 안에서 재작업 1회차의 평가(예: 100점)가 3회차 merge 를 통과**시키는 구멍이 남았다.
+	// 이제 cycleId(`step-<idx>#<reworkCount>`)로 비교해 그 구멍을 닫는다.
 	// (주입 평가 `--score`/env 는 CI·테스트 경로이므로 freshness 면제: source==='injected')
-	if (evaluation.source === 'file' && evaluation.stepId !== stepId) {
+	if (evaluation.source === 'file' && evaluation.cycleId !== cycleId) {
+		const seen = evaluation.cycleId ?? (evaluation.stepId ? `${evaluation.stepId}#? (구 형식)` : '없음');
 		result.hysteresis = {
 			pass: false,
 			latched: false,
-			reason: `stale 평가 거부: eval.stepId=${evaluation.stepId ?? '없음'} ≠ 현재 ${stepId} → 이번 사이클의 신선한 평가 필요(가짜 통과 차단)`,
+			reason: `stale 평가 거부: eval.cycleId=${seen} ≠ 현재 ${cycleId} → 이번 재작업 회차의 신선한 평가 필요(가짜 통과 차단)`,
 		};
 		result.passed = false;
 		return { exitCode: 1, result };
@@ -342,7 +409,7 @@ function printHuman(result) {
 	}
 	if (result.evaluation) {
 		console.log(
-			`평가: step=${result.stepId} score=${result.evaluation.score} major=${result.evaluation.majorComplaints} (source=${result.evaluation.source ?? '?'})`,
+			`평가: cycle=${result.cycleId} score=${result.evaluation.score} major=${result.evaluation.majorComplaints} (source=${result.evaluation.source ?? '?'})`,
 		);
 	}
 	if (result.hysteresis) {

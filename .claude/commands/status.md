@@ -29,6 +29,9 @@ node -e "const s=JSON.parse(require('node:fs').readFileSync('harness/state.json'
 | `committed`                    | 현재 페이즈 결과 커밋 여부. `false`+페이즈 done 표시면 멱등 재실행 대상.                   |
 | `reworkCount`                  | 현재 step 재작업 횟수 (한도 5). 도달 후에도 `rework` 면 `vote` 분기. step 바뀌면 0 초기화.  |
 | `gateOverride`                 | `true` 면 직전 `vote` 의결로 다음 `merge` 가 주관 임계를 우회(결정적 게이트는 유지). 새 step 진입 시 `false`. |
+| `failures`                     | 결정적 페이즈별 **연속** 실패 횟수. 3회 도달 시 결함 분류에 따라 되돌림. 성공 시 0 리셋.                    |
+| `escalations`                  | 되돌림 횟수. 3 초과 시 `status='blocked'` 로 항복. step 바뀌면 0.                                            |
+| `blockedReason`                | `blocked` 사유 한 줄. 상세는 `harness/errors/` 최신 항목. 재개는 `loop.mjs --resume`.                       |
 | `scores[stepId]`               | step 별 `{ score, majorComplaints, latched }`. `latched=true` 면 done-gate 통과 래치 상태. |
 
 ## 평점(scores) 해석 — done-gate 히스테리시스

@@ -23,8 +23,9 @@ import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { readGateStatus } from './done-gate.mjs';
 import { applyInjectedScore, DIMENSIONS, scoreObservations } from './lib/rubric.mjs';
-import { readState, stateFilePath } from './lib/state.mjs';
+import { cycleIdOf, readState, stateFilePath, stepIdOf } from './lib/state.mjs';
 import { isPortInUse, teardownDevServer } from './lib/teardown.mjs';
 
 const DEFAULT_PORT = 8000;
@@ -38,15 +39,49 @@ function log(...args) {
 
 /** CLI 인자 파싱. */
 function parseArgs(argv) {
-	const opts = { port: DEFAULT_PORT, id: undefined, score: undefined, majorComplaints: undefined, noServer: false };
+	const opts = {
+		port: DEFAULT_PORT,
+		id: undefined,
+		score: undefined,
+		majorComplaints: undefined,
+		noServer: false,
+		gatesGreen: undefined,
+	};
 	for (const arg of argv) {
 		if (arg.startsWith('--port=')) opts.port = Number(arg.slice('--port='.length));
 		else if (arg.startsWith('--id=')) opts.id = arg.slice('--id='.length);
 		else if (arg.startsWith('--score=')) opts.score = Number(arg.slice('--score='.length));
 		else if (arg.startsWith('--major-complaints=')) opts.majorComplaints = Number(arg.slice('--major-complaints='.length));
 		else if (arg === '--no-server') opts.noServer = true;
+		else if (arg.startsWith('--gates-green=')) opts.gatesGreen = arg.slice('--gates-green='.length) !== 'false';
 	}
 	return opts;
+}
+
+/**
+ * 루브릭 `q.gates-green` 에 넣을 **실측** 게이트 상태를 구한다.
+ *
+ * 예전에는 호출부가 `gatesGreen: true` 를 하드코딩해 넘겨서, 게이트가 실제로 깨져 있어도
+ * 이 항목(major, weight 40)이 항상 만점을 받았다 — 종합 8점이 무조건 지급되던 실측 버그.
+ * 이제 verify 페이즈가 남긴 `harness/gate-status.json` 의 **이번 사이클 결과**를 읽는다.
+ *
+ * 우선순위: `--gates-green=` 주입 > 이번 사이클 gate-status > 알 수 없음(false).
+ * "알 수 없음"을 통과로 치지 않는 것이 핵심이다 — 모르면 만점을 주지 않는다.
+ *
+ * @param {string} repoRoot
+ * @param {{gatesGreen?:boolean}} opts
+ * @param {object|null} state
+ * @returns {{gatesGreen:boolean, source:'injected'|'gate-status'|'unknown'}}
+ */
+export function resolveGatesGreen(repoRoot, opts, state) {
+	if (opts?.gatesGreen !== undefined) {
+		return { gatesGreen: opts.gatesGreen === true, source: 'injected' };
+	}
+	const status = readGateStatus(repoRoot, cycleIdOf(state));
+	if (status) {
+		return { gatesGreen: status.passed === true, source: 'gate-status' };
+	}
+	return { gatesGreen: false, source: 'unknown' };
 }
 
 /** 다음 평가 id 생성: harness/evaluations 의 eval-*.json 수 기반 결정적 시퀀스. */
@@ -342,6 +377,19 @@ export async function runEvaluation(opts, repoRoot) {
 	let mode = 'static-fallback';
 	let observations;
 
+	// 현재 사이클 식별자 + 결정적 게이트의 **실측** 상태를 먼저 확정한다.
+	// (게이트 상태는 관찰값의 입력이므로 서버 기동보다 앞서 결정)
+	const st = readState(stateFilePath(repoRoot));
+	const { gatesGreen, source: gatesSource } = resolveGatesGreen(repoRoot, opts, st);
+	if (gatesSource === 'unknown') {
+		log(
+			`⚠ 게이트 상태 미확인 — 이번 사이클(${cycleIdOf(st)})의 harness/gate-status.json 이 없습니다. ` +
+				`q.gates-green 을 실패로 처리합니다. verify 페이즈(done-gate)를 먼저 실행하거나 --gates-green=true 로 주입하세요.`,
+		);
+	} else {
+		log(`게이트 상태(${gatesSource}): ${gatesGreen ? 'green' : 'RED'}`);
+	}
+
 	try {
 		// 1) dev 서버 기동 (--no-server 면 생략 — 외부에서 띄운 서버 가정)
 		if (!opts.noServer) {
@@ -357,16 +405,16 @@ export async function runEvaluation(opts, repoRoot) {
 		// 2) Playwright 실측 시도 → 실패/미설치 시 정적 폴백
 		const pw = serverReady ? await tryLoadPlaywright() : null;
 		if (pw && serverReady) {
-			observations = await playwrightObservations(pw, port, shotPath, { gatesGreen: true, expectedName: expectedAppName(repoRoot) });
+			observations = await playwrightObservations(pw, port, shotPath, { gatesGreen, expectedName: expectedAppName(repoRoot) });
 			if (observations) {
 				mode = 'playwright';
 			} else {
 				log('Playwright 브라우저 실패 → 정적 폴백으로 전환');
-				observations = staticObservations(repoRoot, { serverReady, gatesGreen: true });
+				observations = staticObservations(repoRoot, { serverReady, gatesGreen });
 			}
 		} else {
 			if (!pw) log('Playwright 미설치 — 정적 폴백');
-			observations = staticObservations(repoRoot, { serverReady, gatesGreen: true });
+			observations = staticObservations(repoRoot, { serverReady, gatesGreen });
 		}
 
 		// 3) 채점 (루브릭) + 주입 오버라이드
@@ -378,13 +426,15 @@ export async function runEvaluation(opts, repoRoot) {
 
 		// 현재 step/사이클 식별자를 평가에 스탬프한다 — done-gate 의 freshness 게이트가
 		// "이번 사이클의 신선한 평가"인지 검증하는 데 쓴다(stale 평가 가짜 통과 차단).
-		const st = readState(stateFilePath(repoRoot));
-		const stepId = `step-${st?.currentStepIdx ?? 0}`;
+		const stepId = stepIdOf(st);
+		const cycleId = cycleIdOf(st);
 		const phaseSeq = st?.phaseSeq ?? null;
 
 		const evalObj = {
 			id,
 			stepId,
+			cycleId,
+			gatesSource,
 			phaseSeq,
 			createdAt: new Date().toISOString(),
 			mode,

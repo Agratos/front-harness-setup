@@ -255,6 +255,40 @@ function runNoRemotePushSkipTest() {
 	}
 }
 
+function runEmptyMergeGuardTests() {
+	console.log('[6] 빈 병합 차단 — 커밋 없이 merge 로 오면 거부');
+	const dir = makeTempRepo(false);
+	try {
+		runGitFlow(dir, ['seed-main']);
+		runGitFlow(dir, ['start-step', '01', 'empty']);
+
+		// (a) 아무것도 커밋하지 않은 상태 → 게이트가 ok 여도 거부되어야 한다.
+		//     예전에는 통과해서 --no-ff 빈 병합이 됐고, 코드가 main 에 없는 채로 "완료"됐다(실측 사고).
+		const emptyMerge = runGitFlow(dir, ['merge-step', '01', 'empty', '--gate-ok']);
+		check('빈 브랜치 merge-step 거부(exit != 0)', emptyMerge.code !== 0);
+		check('거부 사유에 "병합할 작업물이 없습니다"', /병합할 작업물이 없습니다/.test(emptyMerge.stderr));
+
+		// (b) 작업트리에만 있고 **커밋 안 한** 변경도 여전히 거부 (merge 는 커밋된 이력만 옮긴다)
+		writeFileSync(path.join(dir, 'wip.txt'), 'uncommitted\n', 'utf8');
+		const dirtyMerge = runGitFlow(dir, ['merge-step', '01', 'empty', '--gate-ok']);
+		check('미커밋 변경만 있어도 거부', dirtyMerge.code !== 0);
+
+		// (c) 커밋하면 통과
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: 실제 작업물']);
+		const realMerge = runGitFlow(dir, ['merge-step', '01', 'empty', '--gate-ok']);
+		check('커밋 후 merge-step 통과(exit 0)', realMerge.code === 0);
+		check('작업물 확인 로그 출력', /작업물 확인: 커밋 \d+개/.test(realMerge.stdout));
+
+		// (d) --allow-empty 는 의도적 우회로 허용
+		runGitFlow(dir, ['start-step', '02', 'intentional']);
+		const allowed = runGitFlow(dir, ['merge-step', '02', 'intentional', '--gate-ok', '--allow-empty']);
+		check('--allow-empty 는 빈 병합 허용(exit 0)', allowed.code === 0);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
 function main() {
 	console.log('=== git-flow selftest (임시 저장소에서만 실행) ===');
 	console.log(`temp base: ${os.tmpdir()}`);
@@ -264,6 +298,7 @@ function main() {
 		runDirectMainGuardTests();
 		runRemoteFlowTests();
 		runNoRemotePushSkipTest();
+		runEmptyMergeGuardTests();
 	} catch (err) {
 		console.error('SELFTEST 예외:', err.message);
 		failures.push(`예외: ${err.message}`);
