@@ -7,6 +7,22 @@
 
 ## 현재 상태
 
+### 🔵 진행 중 — v3 전환: 테스트벤치 4회 반복 시행
+- **복원 지점**: 브랜치 `snapshot/pre-v3-2026-08-10` + 태그 `v2-final` (전환 직전 상태 박제)
+- **진단·설계**: `docs/review/` — 발견 14건(F1~F14) + 목표 설계(작업 지시서·3축·5단계)
+- **1단계(안전망) 완료** — `edb8fa6` → main `1bdd9eb`
+  - gatesGreen 하드코딩 제거(실측 `gate-status.json` 반영) / 신선도 step→cycle(`cycleId`)
+  - 빈 병합 차단(`branchHasWork`) / 실패 라우팅(재시도3→결함분류 되돌림→blocked, exit 3)
+  - demo 초기상태 실패 수정(기존 결함 — 새 복사본에서 항상 FAIL 이던 것)
+  - 검증: 게이트 4종 green · self-test 13종 PASS · demo PASS
+- **테스트벤치**: `docs/testbench/project-manager.md`(고정 사양, 수정 금지) + `results.md`(계측)
+  - 프로젝트 관리 프로그램 3 step / AC 10개. 매 시행 새 복사본에서 처음부터.
+  - 핵심 지표: **사람 개입 횟수 ↓**, **AC 달성 ↑**, **가짜 통과 0 유지**
+- **외부 참고 반영**: 사내 조직 가이드 pptx 의 결함 3분류 → 1단계 실패 라우팅에 채택.
+  HANDOFF 스키마(2단계) · 횡단변경 이력(3단계) 은 대기.
+- **다음 1개 행동**: 시행 1 — `bench/pm-trial1` 에서 고정 사양으로 자율 개발 실행 후 계측
+- **마지막 갱신**: 2026-08-10 (기록자: v3 전환 세션)
+
 ### 🟢 완료 — Notion 라이브 flush 자동화 (outbox → 실제 Notion REST)
 - **신규**: `scripts/lib/notion-api.mjs`(Notion REST 래퍼: clearPageChildren·appendBlocks·addComment + `flushOutbox`) + `scripts/notion-flush.mjs`(CLI, `yarn notion:flush`).
   - `dashboard.reset` → 페이지 자식 블록 비우기 + 초기화 콜아웃 / `dashboard.upsert` → 진행 한 줄 append / `decision.comment.mirror` → 페이지 댓글.

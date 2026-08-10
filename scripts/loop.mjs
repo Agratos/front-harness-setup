@@ -305,10 +305,29 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	let state = readState(statePath);
 
 	// 초기화: 상태가 없거나 init 이고 planSteps 가 비었으면 seed
+	let justSeeded = false;
 	if (!state) {
 		state = defaultState(initSteps ?? []);
+		justSeeded = Array.isArray(initSteps) && initSteps.length > 0;
 	} else if ((state.status === 'init' || !state.phase || state.phase === 'init') && initSteps) {
 		state = { ...defaultState(initSteps), scores: state.scores ?? {} };
+		justSeeded = initSteps.length > 0;
+	}
+
+	// ⚠️ `--init` 은 **시드만** 한다. 예전에는 시드와 동시에 첫 페이즈(decompose)를 실행해버려서,
+	// `/start-project` 의 문서 순서(`loop --init` → `git-flow seed-main`)대로 하면 main 시드 전에
+	// `start-step` 이 호출돼 실패하고 **step 01 이 브랜치 없이 main 에서 작업**됐다(실측 사고).
+	// 시드와 진행을 분리하면 호출 순서에 관계없이 안전하다.
+	if (justSeeded) {
+		const seededState = { ...state, status: 'running', phase: PHASE_ORDER[0], committed: false };
+		writeState(statePath, seededState);
+		return {
+			state: seededState,
+			executedPhase: null,
+			rerun: false,
+			note: `planSteps ${state.planSteps.length}개 시드 완료 — 진행은 다음 호출부터 (시드는 페이즈를 전진시키지 않음)`,
+			done: false,
+		};
 	}
 
 	// planSteps 가 비어 있으면 진행 불가
@@ -357,7 +376,18 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	// 이후 모든 작업(구현·verify)이 main 이 아니라 step 브랜치에서 일어나고, merge 페이즈에서
 	// 그 브랜치를 main 에 병합·push 한다. (skipGitFlow 이거나 git-flow.mjs 없으면 자동 no-op)
 	if (phase === PHASE_ORDER[0]) {
-		startStepBranch(state, repoRoot);
+		const branchOk = startStepBranch(state, repoRoot);
+		if (!branchOk) {
+			// ⚠️ 브랜치 없이 전진하면 그 step 의 구현이 통째로 main 에서 일어난다(실측 사고).
+			// 예전에는 로그만 남기고 전진했다 — "문제는 merge 에서 드러남"이라지만,
+			// 그때는 이미 한 step 을 main 에 쏟아부은 뒤다. 여기서 막는다.
+			const note = `step 브랜치 생성 실패 — 전진 중단. main 이 시드됐는지 확인하세요(node scripts/git-flow.mjs seed-main).`;
+			log(note);
+			appendCycleLog(repoRoot, cycleEntry(state, phase, 'fail', note));
+			const held = { ...state, committed: false };
+			writeState(statePath, held);
+			return { state: held, executedPhase: phase, rerun, note, done: false };
+		}
 	}
 
 	if (DETERMINISTIC_PHASES.has(phase)) {
@@ -502,10 +532,12 @@ function handleDeterministicFailure({ state, phase, detail, repoRoot, statePath,
  */
 function startStepBranch(state, repoRoot) {
 	const gitFlow = path.join(repoRoot, 'scripts', 'git-flow.mjs');
-	if (!existsSync(gitFlow)) return;
+	if (!existsSync(gitFlow)) return true; // git-flow 자체가 없으면(셀프테스트 temp cwd) 통과
 	const { nn, slug } = deriveStepRef(state);
 	const r = runNode([gitFlow, 'start-step', nn, slug], repoRoot);
 	log(`step 브랜치 준비: git-flow start-step ${nn} ${slug} (exit ${r.code})`);
+	// skipGitFlow(=useGit=false) 면 git-flow 가 스스로 no-op 으로 exit 0 하므로 여기서 true 가 된다.
+	return r.code === 0;
 }
 
 /** cycles 로그 엔트리 구성 (결정적 — Date 대신 phaseSeq/checkpointToken 사용) */
