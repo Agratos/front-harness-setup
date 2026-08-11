@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { acceptanceOf, checkAcCoverage, coveredAcIds, findStep, readPlan, validatePlan } from './lib/plan.mjs';
+import { acceptanceOf, allAcIds, checkAcCoverage, coveredAcIds, findStep, formatCoverage, readPlan, validatePlan } from './lib/plan.mjs';
 import { resolveInitPlan } from './loop.mjs';
 import { collect, nextAction } from './status.mjs';
 
@@ -119,6 +119,22 @@ console.log('[A] plan.mjs — AC 정규화 · 매칭 · 커버리지');
 		scenarios: [{ steps: [{ ac: 'AC-1' }, { ac: 'AC-2' }, { ac: 'AC-99' }] }],
 	});
 	check('[A] 계획에 없는 태그를 unknown 으로 보고(오타 탐지)', typo.ok === true && typo.unknown.join() === 'AC-99');
+
+	// 회귀 시나리오 오탐 방지 (테스트벤치 시행 6, T6-1)
+	// 스펙에는 이전 step 의 시나리오를 회귀 검증으로 남긴다. 그 태그는 **다른 step 의 AC** 이므로
+	// 오타(unknown)와 갈라야 한다 — 섞으면 step 이 쌓일수록 경고가 길어져 진짜 오타를 가린다.
+	{
+		const known = allAcIds(PLAN);
+		check('[A] allAcIds 는 계획 전체의 AC id 를 모은다', known.has('AC-1') && known.has('AC-3') && known.size >= 3);
+		const spec = { scenarios: [{ steps: [{ ac: 'AC-1' }, { ac: 'AC-2' }, { ac: 'AC-3' }, { ac: 'AC-99' }] }] };
+		const scoped = checkAcCoverage(PLAN.steps[0], spec, { knownAcIds: known });
+		check('[A] 다른 step 의 AC 는 otherSteps 로 분리', scoped.otherSteps.includes('AC-3') && !scoped.unknown.includes('AC-3'));
+		check('[A] 계획 어디에도 없는 태그만 unknown 에 남는다', scoped.unknown.join() === 'AC-99');
+		check('[A] 요약 문구는 회귀를 건수로만 알리고 오타는 ⚠ 로 강조', /회귀\(다른 step AC\) 1건/.test(formatCoverage(scoped)) && /⚠ 계획에 없는 태그: AC-99/.test(formatCoverage(scoped)));
+		// knownAcIds 를 주지 않으면 종전 동작(하위호환)
+		const legacy = checkAcCoverage(PLAN.steps[0], spec);
+		check('[A] knownAcIds 미지정 시 종전 동작 유지', legacy.unknown.includes('AC-3') && legacy.otherSteps.length === 0);
+	}
 	// AC 미선언 step 은 검사 대상 아님
 	const na = checkAcCoverage({ label: 'x' }, SPEC_FULL);
 	check('[A] AC 미선언 step → applicable=false, ok=true', na.applicable === false && na.ok === true);

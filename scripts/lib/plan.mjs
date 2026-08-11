@@ -160,31 +160,56 @@ export function coveredAcIds(spec) {
 }
 
 /**
+ * 계획 전체(모든 step)의 AC id 집합.
+ *
+ * 왜 필요한가: 상호작용 스펙은 이전 step 의 시나리오를 **회귀 검증으로 남긴다**(권장 운용).
+ * 그 시나리오의 `ac` 태그는 다른 step 의 AC 이므로, 현재 step 기준으로만 보면
+ * "계획에 없는 태그"(=오타 신호)로 오탐된다 — step 이 쌓일수록 목록이 길어져 **진짜 오타를 가린다**
+ * (테스트벤치 시행 6, T6-1 실측).
+ * @param {object|null} plan readPlan().plan
+ * @returns {Set<string>}
+ */
+export function allAcIds(plan) {
+	const ids = new Set();
+	for (const step of plan?.steps ?? []) {
+		for (const ac of acceptanceOf(step)) ids.add(ac.id);
+	}
+	return ids;
+}
+
+/**
  * AC 커버리지 판정 — 이 step 의 모든 AC 가 최소 1개 단언/시나리오로 덮였는가.
  *
  * @param {object|null} planStep findStep().step
  * @param {object|null} spec eval-scenario.json 내용 (없으면 null)
+ * @param {{knownAcIds?: Set<string>}} [opts] 계획 전체의 AC id 집합(`allAcIds(plan)`).
+ *   주면 다른 step 의 AC 태그를 오타(`unknown`)와 **구분**한다. 안 주면 종전과 동일하게 동작한다.
  * @returns {{
  *   applicable: boolean,      // 이 step 에 AC 가 선언돼 있는가 (없으면 검사 대상 아님)
  *   total: number,
  *   covered: string[],
  *   missing: string[],
- *   unknown: string[],        // 스펙이 참조했지만 계획에 없는 AC id (오타 탐지)
+ *   unknown: string[],        // 계획 어디에도 없는 AC id (오타 탐지 — 이것만 경고 가치가 있다)
+ *   otherSteps: string[],     // 다른 step 의 AC id (회귀 시나리오 — 정상)
  *   ok: boolean
  * }}
  */
-export function checkAcCoverage(planStep, spec) {
+export function checkAcCoverage(planStep, spec, opts = {}) {
 	const acs = acceptanceOf(planStep);
 	if (acs.length === 0) {
-		return { applicable: false, total: 0, covered: [], missing: [], unknown: [], ok: true };
+		return { applicable: false, total: 0, covered: [], missing: [], unknown: [], otherSteps: [], ok: true };
 	}
 	const tagged = coveredAcIds(spec);
 	const ids = acs.map((a) => a.id);
 	const covered = ids.filter((id) => tagged.has(id));
 	const missing = ids.filter((id) => !tagged.has(id));
-	// 계획에 없는 id 를 스펙이 참조하면 오타이거나 계획이 낡은 것 — 조용히 넘기지 않는다.
-	const unknown = [...tagged].filter((id) => !ids.includes(id));
-	return { applicable: true, total: ids.length, covered, missing, unknown, ok: missing.length === 0 };
+	// 이 step 의 AC 가 아닌 태그들. 계획 전체를 알면 "다른 step 의 것(정상)" 과
+	// "계획 어디에도 없는 것(오타·낡은 계획)" 으로 갈라야 경고가 신호로 남는다.
+	const foreign = [...tagged].filter((id) => !ids.includes(id));
+	const known = opts.knownAcIds instanceof Set ? opts.knownAcIds : null;
+	const otherSteps = known ? foreign.filter((id) => known.has(id)) : [];
+	const unknown = known ? foreign.filter((id) => !known.has(id)) : foreign;
+	return { applicable: true, total: ids.length, covered, missing, unknown, otherSteps, ok: missing.length === 0 };
 }
 
 /**
@@ -195,8 +220,10 @@ export function formatCoverage(cov) {
 	if (!cov.applicable) return 'AC 미선언 (plan.json 에 이 step 의 acceptance 가 없음)';
 	const head = `AC ${cov.covered.length}/${cov.total} 덮임`;
 	const miss = cov.missing.length ? ` · 미검증: ${cov.missing.join(', ')}` : '';
-	const unk = cov.unknown.length ? ` · 계획에 없는 태그: ${cov.unknown.join(', ')}` : '';
-	return head + miss + unk;
+	// 다른 step 의 AC 는 회귀 시나리오의 정상 신호이므로 **건수만** 알린다(목록을 나열하면 소음이 된다).
+	const other = cov.otherSteps?.length ? ` · 회귀(다른 step AC) ${cov.otherSteps.length}건` : '';
+	const unk = cov.unknown.length ? ` · ⚠ 계획에 없는 태그: ${cov.unknown.join(', ')}` : '';
+	return head + miss + other + unk;
 }
 
 export default {
@@ -205,6 +232,7 @@ export default {
 	validatePlan,
 	findStep,
 	acceptanceOf,
+	allAcIds,
 	coveredAcIds,
 	checkAcCoverage,
 	formatCoverage,
