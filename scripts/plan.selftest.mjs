@@ -13,7 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { acceptanceOf, checkAcCoverage, coveredAcIds, findStep, readPlan } from './lib/plan.mjs';
+import { acceptanceOf, checkAcCoverage, coveredAcIds, findStep, readPlan, validatePlan } from './lib/plan.mjs';
+import { resolveInitPlan } from './loop.mjs';
 import { collect, nextAction } from './status.mjs';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -279,6 +280,75 @@ console.log('[C] status.mjs — 산출물 집계 + 다음 1개 행동');
 		'[C] done → 다음 행동 없음',
 		/없음/.test(nextAction({ state: { ...STATE, status: 'done' }, scenario: {}, ac: {} }).action),
 	);
+}
+
+// ───────── [D] 계획 정본 — 계획을 두 번 적지 않는다 (--init-plan) ─────────
+console.log('[D] plan.json 을 시드 입력으로 (계획 정본 단일화)');
+{
+	// 검증 규칙
+	const ok = validatePlan({ steps: [{ label: '01-a', acceptance: [{ id: 'AC-1', text: 't' }] }, { label: '02-b' }] });
+	check('[D] 정상 계획 → ok, 라벨 파생', ok.ok === true && ok.labels.join() === '01-a,02-b');
+	check('[D] AC 미작성 뒤 step 은 경고(차단 아님)', ok.warnings.some((w) => /02-b/.test(w)));
+
+	check('[D] steps 없음 → 오류', validatePlan({}).ok === false);
+	check('[D] steps 빈 배열 → 오류', validatePlan({ steps: [] }).ok === false);
+	check(
+		'[D] 첫 step 에 AC 없으면 오류 (무엇을 만들지 모른 채 시작 금지)',
+		validatePlan({ steps: [{ label: '01-a' }] }).ok === false,
+	);
+	const dup = validatePlan({ steps: [{ label: '01-a', acceptance: ['AC-1: t'] }, { label: '01-a' }] });
+	check('[D] 라벨 중복 → 오류', dup.ok === false && dup.errors.some((e) => /중복/.test(e)));
+	const noLabel = validatePlan({ steps: [{ acceptance: ['AC-1: t'] }] });
+	check('[D] 라벨 없음 → 오류', noLabel.ok === false);
+	const badFmt = validatePlan({ steps: [{ label: 'login', acceptance: ['AC-1: t'] }] });
+	check('[D] "<nn>-<slug>" 아니면 경고(브랜치명 직결)', badFmt.ok === true && badFmt.warnings.some((w) => /형식/.test(w)));
+
+	// resolveInitPlan — 파일 경로 해석 + 실패 메시지
+	const missing = fixture({});
+	try {
+		const r = resolveInitPlan(missing);
+		check('[D] 계획 파일 없음 → error + steps null', r.steps === null && /계획 파일이 없습니다/.test(r.error));
+	} finally {
+		rmSync(missing, { recursive: true, force: true });
+	}
+	const broken = fixture({ 'harness/plan.json': '{ nope' });
+	try {
+		check('[D] 계획 파싱 실패 → error', resolveInitPlan(broken).error !== null);
+	} finally {
+		rmSync(broken, { recursive: true, force: true });
+	}
+	const good = fixture({ 'harness/plan.json': PLAN });
+	try {
+		const r = resolveInitPlan(good);
+		check('[D] 정본에서 planSteps 파생', r.error === null && r.steps.join() === '01-task-board,02-filter');
+	} finally {
+		rmSync(good, { recursive: true, force: true });
+	}
+
+	// drift — 구식 --init 과 plan.json 을 따로 쓰면 라벨이 어긋날 수 있다
+	const drifted = fixture({
+		'harness/state.json': { ...STATE, planSteps: ['01-다른라벨', '02-filter'] },
+		'harness/plan.json': PLAN,
+	});
+	try {
+		const s = collect(drifted);
+		check('[D] 계획 정본 ↔ 상태 라벨 불일치 감지', s.ac.drift !== null);
+	} finally {
+		rmSync(drifted, { recursive: true, force: true });
+	}
+	const aligned = fixture({ 'harness/state.json': STATE, 'harness/plan.json': PLAN });
+	try {
+		check('[D] 라벨 일치 시 drift 없음', collect(aligned).ac.drift === null);
+	} finally {
+		rmSync(aligned, { recursive: true, force: true });
+	}
+
+	// 안내 시점 — AC 공백은 "채울 자리" 에서만 다음 행동으로 승격된다
+	const gapCtx = (phase) => nextAction({ state: { ...STATE, phase }, scenario: {}, ac: { applicable: true, ok: false, missing: ['AC-1'] } });
+	check('[D] decompose 에서는 /run-cycle 이 다음 행동 (앞질러 시키지 않음)', /run-cycle/.test(gapCtx('decompose').action));
+	check('[D] decompose 에서도 AC 공백은 이유에 표시', /AC-1/.test(gapCtx('decompose').why));
+	check('[D] design 에서 "이 페이즈에서 작성" 안내', /이 페이즈에서 단언을 작성/.test(gapCtx('design').why));
+	check('[D] verify 에서는 AC 채우기가 다음 행동', /ac 태그 추가/.test(gapCtx('verify').action));
 }
 
 console.log('');

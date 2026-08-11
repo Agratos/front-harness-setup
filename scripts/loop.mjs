@@ -28,6 +28,7 @@ import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readS
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
 import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
 import { logError } from './lib/log.mjs';
+import { planPath, validatePlan } from './lib/plan.mjs';
 
 // step 당 페이즈 순서. merge 다음은 (다음 step 의) decompose 로 래핑한다.
 export const PHASE_ORDER = ['decompose', 'design', 'implement', 'verify', 'evaluate', 'debate', 'merge'];
@@ -853,6 +854,54 @@ function cycleEntry(state, phase, outcome, detail) {
 	};
 }
 
+/**
+ * `--init-plan[=<path>]` — **계획의 정본은 `harness/plan.json`** 이고 planSteps 는 여기서 파생된다.
+ *
+ * 왜 이 경로를 만들었나: 예전에는 같은 계획을 **두 번** 적어야 했다 —
+ *   ① `loop.mjs --init "01-login,02-dashboard"` (state.planSteps)
+ *   ② `harness/plan.json` 의 수용기준(AC)
+ * 그래서 라벨이 어긋나면 AC 가 엉뚱한 step 에 붙거나 조용히 무시됐다(라벨 매칭 실패 → 인덱스 폴백).
+ * 인터뷰 → 계획 → 검증이 한 파일에서 이어지도록 plan.json 을 시드 입력으로 승격했다.
+ *
+ * @returns {{steps:string[]|null, error:string|null, warnings:string[], source:string|null}}
+ */
+export function resolveInitPlan(repoRoot, specPath) {
+	const p = specPath ? path.resolve(repoRoot, specPath) : planPath(repoRoot);
+	const rel = path.relative(repoRoot, p) || p;
+	if (!existsSync(p)) {
+		return {
+			steps: null,
+			warnings: [],
+			source: rel,
+			error:
+				`계획 파일이 없습니다: ${rel}\n` +
+				`  인터뷰 결과를 수용기준(AC)까지 담은 계획을 먼저 작성하세요.\n` +
+				`  템플릿: harness/plan.example.json → ${rel} 로 복사해 채우기\n` +
+				`  (라벨만으로 시드하려면 기존 방식도 유효합니다: --init "01-login,02-dashboard")`,
+		};
+	}
+	let plan;
+	try {
+		plan = JSON.parse(readFileSync(p, 'utf8'));
+	} catch (e) {
+		return { steps: null, warnings: [], source: rel, error: `${rel} 파싱 실패: ${String(e?.message ?? e).slice(0, 200)}` };
+	}
+	const v = validatePlan(plan);
+	if (!v.ok) {
+		return { steps: null, warnings: v.warnings, source: rel, error: `${rel} 검증 실패:\n  - ${v.errors.join('\n  - ')}` };
+	}
+	return { steps: v.labels, warnings: v.warnings, source: rel, error: null };
+}
+
+/** CLI 인자: --init-plan / --init-plan=<path> */
+function parseInitPlan(argv) {
+	for (const a of argv) {
+		if (a === '--init-plan') return { use: true, path: null };
+		if (a.startsWith('--init-plan=')) return { use: true, path: a.slice('--init-plan='.length) };
+	}
+	return { use: false, path: null };
+}
+
 /** CLI 인자: --init "<s1>,<s2>" */
 function parseInit(argv) {
 	for (let i = 0; i < argv.length; i++) {
@@ -887,7 +936,22 @@ function parseDebate(argv) {
 function main() {
 	const argv = process.argv.slice(2);
 	const repoRoot = process.cwd();
-	const initSteps = parseInit(argv);
+	let initSteps = parseInit(argv);
+
+	// --init-plan: 계획 정본(harness/plan.json)에서 planSteps 를 파생한다.
+	// 검증 실패는 **시드하지 않고 즉시 종료**한다 — 계획 없이 시작하면 그 뒤 모든 판정의 기준이 사라진다.
+	const initPlan = parseInitPlan(argv);
+	if (initPlan.use) {
+		const r = resolveInitPlan(repoRoot, initPlan.path);
+		if (r.error) {
+			console.error(`[loop] --init-plan 실패\n${r.error}`);
+			process.exit(2);
+		}
+		for (const w of r.warnings) console.log(`[loop] ⚠ ${w}`);
+		console.log(`[loop] 계획 정본 ${r.source} 에서 planSteps ${r.steps.length}개 파생: ${r.steps.join(', ')}`);
+		initSteps = r.steps;
+	}
+
 	const debateOutcome = parseDebate(argv);
 	const resume = argv.includes('--resume');
 	const force = argv.includes('--force');

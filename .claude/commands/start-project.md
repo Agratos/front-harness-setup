@@ -63,27 +63,18 @@ node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-
 
 > 🔧 **default 브랜치 보장**: `seed-main` 은 원격이 연결돼 있으면 **`main` 을 먼저 push** 한다 — 빈 레포에 **step 브랜치가 main 보다 먼저 push 되면 GitHub 이 그 step 을 default 브랜치로 잡는** 문제(실제 테스트에서 `step/01-…` 가 default 가 됨)를 막기 위함. 이미 default 가 잘못 잡혔으면 `gh repo edit <owner>/<repo> --default-branch main`(또는 `gh api -X PATCH repos/<owner>/<repo> -f default_branch=main`)로 교정한다.
 
-### 4) 계획 시드 (planSteps 도출)
+### 4) ⛔ 계획 시드 — 인터뷰 결과를 `harness/plan.json` 으로 (무조건)
 
-Q&A 결과를 step 목록으로 분해해 시드합니다. 각 step 은 `"<nn>-<slug>"` 형식(예: `01-login`) — 이 라벨이 `git-flow` 의 `step/<nn>-<slug>` 브랜치명으로 직결됩니다.
+> **여기가 인터뷰와 개발을 잇는 지점이다.** Q&A 로 알아낸 것을 이 파일에 적으면, 그 순간부터
+> 하네스는 "무엇을 만족하면 이 step 이 끝인지"를 **알고** 개발한다. 이 단계를 건너뛰면 계획은
+> 문자열 라벨 배열로만 남고, 루브릭은 "화면이 떴는가"만 채점하며, 의도와 다르게 만들어져도
+> 어떤 게이트도 울리지 않는다.
 
-```bash
-node scripts/loop.mjs --init "01-login,02-dashboard,03-settings"
-```
-
-- `--init` 은 상태가 `init`/없을 때만 시드(기존 진행 상태는 덮어쓰지 않음).
-- ✅ `--init` 은 **시드만** 하고 페이즈를 전진시키지 않는다. 첫 `/run-cycle` 호출이 `decompose` 부터 정상 진행한다.
-
-### 4b) ⛔ 수용기준(AC) 시드 — `harness/plan.json` (무조건)
-
-> **인터뷰 결과가 여기서 기계가 읽는 형태로 바뀐다.** 이 단계를 건너뛰면 `planSteps` 는 문자열 라벨
-> 배열로만 남고, 하네스는 **"무엇을 만족하면 이 step 이 끝인지"를 모른 채** 개발한다. 그러면
-> 루브릭은 "화면이 떴는가" 만 채점하고, 의도와 다르게 만들어져도 아무 게이트도 울리지 않는다.
-
-`harness/plan.example.json` 을 `harness/plan.json` 으로 복사해 Q&A 결과를 옮긴다.
+**4-1. `harness/plan.example.json` → `harness/plan.json` 으로 복사해 Q&A 결과를 옮긴다.**
 
 ```json
 {
+  "source": "docs/spec/interview-2026-08-11.md",
   "steps": [
     {
       "label": "01-login",
@@ -92,19 +83,44 @@ node scripts/loop.mjs --init "01-login,02-dashboard,03-settings"
         { "id": "AC-1", "text": "올바른 이메일·비밀번호로 로그인하면 대시보드로 이동한다" },
         { "id": "AC-2", "text": "비밀번호가 틀리면 오류 메시지가 보이고 이동하지 않는다" }
       ]
-    }
+    },
+    { "label": "02-dashboard", "goal": "내 작업을 한눈에 본다", "acceptance": [] }
   ]
 }
 ```
 
-- `label` 은 §4 의 `--init` 라벨과 **같은 문자열**로 맞춘다(라벨 우선 매칭, 불일치 시 인덱스 폴백).
+- `label` 은 `"<nn>-<slug>"` 형식 — `git-flow` 의 `step/<nn>-<slug>` 브랜치명으로 직결된다.
 - AC 는 **관찰 가능한 문장**으로 쓴다. "로그인이 잘 된다"(X) → "로그인하면 대시보드로 이동한다"(O).
-  각 AC 는 나중에 `design` 페이즈에서 `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"`)으로 덮여야 한다.
-- 확인: `node scripts/status.mjs` 의 `수용기준 AC` 줄이 `— plan.json 없음` 이 아니게 된다.
+  그래야 `design` 페이즈에서 `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"`)으로 옮길 수 있다.
+- **첫 step 의 `acceptance` 는 필수**다(없으면 아래 시드가 거부한다). 뒤 step 은 비워두고
+  `design` 페이즈에서 채워도 된다 — 그 전까지 그 step 의 AC 검사는 비활성이다.
+- `source` 에 인터뷰 문서 경로를 적어두면 `/status` 가 출처로 표시한다(추적성).
 
-> AC 를 아직 못 정한 step 은 `acceptance` 를 비워두면 그 step 에서는 커버리지 검사가 비활성된다
-> (`design` 페이즈에서 채우면 그때부터 강제). 다만 **첫 step 은 반드시 채운다** — 그러지 않으면
-> 첫 사이클이 "무엇을 만들려는지 모르는 상태"로 돌아간다.
+**4-2. 계획 정본에서 시드한다 — `planSteps` 는 여기서 파생된다.**
+
+```bash
+node scripts/loop.mjs --init-plan
+```
+
+```
+[loop] 계획 정본 harness/plan.json 에서 planSteps 2개 파생: 01-login, 02-dashboard
+```
+
+- 계획을 **두 번 적지 않는다.** 예전에는 `--init "01-login,02-dashboard"` 로 라벨을 따로 넘기고
+  `plan.json` 에 AC 를 또 적어서, 라벨이 어긋나면 AC 가 엉뚱한 step 에 붙거나 조용히 무시됐다.
+- 계획 파일이 없거나 검증에 실패하면 **시드하지 않고 exit 2** 로 멈춘다(계획 없이 시작 금지).
+- ✅ 시드는 **페이즈를 전진시키지 않는다.** 첫 `/run-cycle` 호출이 `decompose` 부터 진행한다.
+- 상태가 `init`/없을 때만 시드한다(기존 진행 상태는 덮어쓰지 않음).
+
+**4-3. 확인.**
+
+```bash
+node scripts/status.mjs   # '수용기준 AC' 줄에 AC 목록과 ✓/· 가 보이면 연결 완료
+```
+
+> 라벨만으로 시드하는 구식 경로(`--init "01-a,02-b"`)도 남아 있다 — 비대화형 CI·셀프테스트용이다.
+> 이 경로로 시드하고 `plan.json` 을 따로 적으면 라벨이 어긋날 수 있고, 그때 `/status` 가
+> **`⚠ 계획 불일치`** 로 경고한다.
 
 ## 실행 요약
 
@@ -117,10 +133,12 @@ node scripts/init-project.mjs --use-mcp=true --git-remote=<url> --notion-url=<ur
 # 2) deep-interview Q&A (필수·무조건) → planSteps 확정
 # 3) git 사용 시 main 시드 — ⚠️ 계획 시드보다 **먼저**
 node scripts/git-flow.mjs seed-main
-# 4) 계획 시드 (시드만 함 — 페이즈 전진은 /run-cycle 부터)
-node scripts/loop.mjs --init "01-login,02-dashboard"
-# 4b) ⛔ 수용기준 시드 — harness/plan.example.json → harness/plan.json 작성 (인터뷰 결과를 AC 로)
-node scripts/status.mjs   # 확인: '수용기준 AC' 줄이 활성화됐는지
+# 4) ⛔ 계획 시드 — 인터뷰 결과를 계획 정본으로
+#    4-1) harness/plan.example.json → harness/plan.json 작성 (step + 수용기준 AC)
+#    4-2) 정본에서 planSteps 파생 (계획을 두 번 적지 않는다)
+node scripts/loop.mjs --init-plan
+#    4-3) 확인
+node scripts/status.mjs
 ```
 
 ## 다음 단계
