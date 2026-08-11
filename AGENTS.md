@@ -15,7 +15,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **UX**             | `ux.md`             | 사용 흐름·정보구조·인터랙션 사용성 평가 및 개선 제안          | `harness/evaluations/ux-<id>.md`                                        |
 | **QA**             | `qa.md`             | typecheck/lint/test/check-arch 실행·판정·회귀 점검            | `harness/errors/`, `harness/evaluations/qa-<id>.md`                     |
 | **Quality**        | `quality.md`        | 성능·접근성 심화 점검 + 빌드 검증·번들 분석·릴리스 노트(구 Deploy 흡수) | `harness/evaluations/quality-<id>.md`, `harness/evaluations/release-notes-<id>.md` |
-| **Customer**       | `customer.md`       | 페르소나(가변 1~3)로 dev 서버 직접 사용(Playwright), 100점 채점 | `harness/evaluations/<id>.json` + `<id>.md` (done-gate 가 `.json` 소비) |
+| **Customer**       | `customer.md`       | 페르소나(가변 1~3) 관점으로 캡처물·격리 리뷰 결과 소비, pass/rework 근거 제공 | debate 발언(`주장:이유`). ⛔ 평가 `.json` 편집은 격리 리뷰 세션(`eval-review.mjs`) 전용 |
 | **Entity Modeler** | `entity-modeler.md` | 서버 API 문서 → FSD 엔티티 DTO/타입/매퍼/스토어 생성          | `src/entities/<entity>/model/{dto,types,mapper,store}/`                 |
 
 > 9역할 = UI · UX · QA · Architect(설계) · Customer(고객) · CEO · PM(코디네이터) · Quality(품질+배포) · Entity Modeler. PM 이 진행관리·중재 코디네이터를 겸하고, 투표 동률 시 CEO 가 캐스팅보트를 가집니다.
@@ -73,6 +73,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **값싼 검사 우선**(스펙·AC 프리플라이트가 결정적 게이트보다 먼저)          | **코드 강제** — `loop.mjs` verify 가 ①프리플라이트(0초) → ②게이트 4종(실측 15초) → ③E2E 순. 전제조건 불충족이면 게이트를 아예 돌리지 않는다 |
 | **새 프로젝트 격리**(이전 제품의 `plan.json`·`eval-scenario.json` 유출 차단) | **코드 강제** — `reset-project.mjs` 가 삭제 대상에 포함. 남기면 **다른 제품의 AC 가 커버리지를 통과**시켜 "의도가 검증됐다"고 오판한다 |
 | **평가 산출물 생성**(evaluate 가 `eval-playwright` 를 실행, 이번 사이클 평가가 없으면 전진 차단) | **코드 강제** — `loop.mjs` evaluate 페이즈. exit code 대신 **산출물(cycleId 일치)로 판정**. 예전엔 호출자 0건이었다 |
+| **격리 채점**(주관 score·complaints 조정은 격리 세션만 — 세션 분리 1단계)   | **코드 강제** — `eval-review.mjs`(fresh `claude -p`, 읽기 전용, 하향 단조, 스탬프+정규화 해시) + `loop.mjs`(스탬프 없으면 차단) + `done-gate.mjs`(리뷰 후 변조 = FAIL). 사양: `docs/spec/session-isolation-2026-08-11.md` |
 | **페이즈 산출물 계약**(에이전트 페이즈는 이번 사이클의 증거 없이 전진하지 못한다) | **코드 강제** — `lib/phase-gate.mjs` + `loop.mjs`. `decompose`/`design`/`debate`/`vote` = 스탬프 찍힌 결정 기록(`node scripts/record-decision.mjs`), `design` = 추가로 스펙·AC 계약, `implement` = **진입 시점 대비 코드 변경**(harness/·docs/ 제외). 증거 부재는 `산출물결함` → 같은 페이즈 재실행, 코드 부재는 `구현결함`. 면제는 `--phase=implement` 기록으로 **명시**해야 통과 |
 | **미관찰 감점**(관찰하지 못한 항목은 통과가 아니라 불만)                  | **코드 강제** — `rubric.mjs` 는 `=== true` 만 통과, `eval-playwright.mjs` 정적 폴백은 미관찰을 `null` 로 남김 → 폴백은 임계(90) 통과 불가 |
 | **상호작용 실증 채점**(`fn.e2e-verified` 가 이번 사이클 E2E 결과를 읽음)  | **코드 강제** — `eval-scenario` → `scen-<cycle>/scenario.json` → `rubric.mjs`. 없으면 major 불만 |

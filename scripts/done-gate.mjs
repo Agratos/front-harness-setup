@@ -33,6 +33,7 @@ import { pathToFileURL } from 'node:url';
 
 import { cycleIdOf, readState, stateFilePath, stepIdOf, writeState } from './lib/state.mjs';
 import { logError } from './lib/log.mjs';
+import { reviewContractActive, verifyEvalReview } from './eval-review.mjs';
 
 export const ENTER_THRESHOLD = 90; // 진입(enter) 임계치 — 이 이상이어야 새로 통과
 export const HOLD_THRESHOLD = 88; // 유지(hold) 임계치 — 래치 후 이 미만이면 탈락
@@ -378,6 +379,20 @@ export function runDoneGate(opts, repoRoot) {
 		};
 		result.passed = false;
 		return { exitCode: 1, result };
+	}
+
+	// 세션 분리 1단계(사양 §4.1): 파일 기반 평가는 **격리 리뷰 스탬프 + 무변조**가 필요하다.
+	// 리뷰 이후 누가 score/complaints 를 만졌으면 정규화 해시가 어긋나 여기서 FAIL 한다 —
+	// "주관 점수는 격리 세션만 조정할 수 있다" 가 md 지시가 아니라 병합 게이트다.
+	// 환경 조건: repoRoot 에 scripts/eval-review.mjs 가 있을 때만(스켈레톤·셀프테스트 임시 cwd 는 비활성).
+	if (evaluation.source === 'file' && reviewContractActive(repoRoot)) {
+		const rv = verifyEvalReview(repoRoot, evaluation.id);
+		result.review = { ok: rv.ok, mode: rv.mode, reason: rv.reason };
+		if (!rv.ok) {
+			result.hysteresis = { pass: false, latched: false, reason: `격리 리뷰 게이트: ${rv.reason}` };
+			result.passed = false;
+			return { exitCode: 1, result };
+		}
 	}
 
 	const wasLatched = !!(state?.scores?.[stepId]?.latched);

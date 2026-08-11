@@ -41,7 +41,7 @@ export const PHASE_CONTRACT = {
 	decompose: { kind: 'decision', what: 'step 분해 협의 기록' },
 	design: { kind: 'spec+decision', what: '수용기준(AC)·상호작용 스펙 확정 + 설계 결정 기록' },
 	implement: { kind: 'code', what: '실제 코드 변경(또는 명시적 면제 기록)' },
-	evaluate: { kind: 'evaluation', what: '이번 사이클 평가 산출물 (runEvaluatePhase 가 강제)' },
+	evaluate: { kind: 'evaluation', what: '이번 사이클 평가 산출물 + 격리 리뷰 스탬프 (runEvaluatePhase 가 강제)' },
 	debate: { kind: 'decision', what: '평가 결과 토론 결론 기록' },
 	vote: { kind: 'decision', what: '투표 결과(표 분포·캐스팅보트) 기록' },
 };

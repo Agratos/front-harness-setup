@@ -45,7 +45,7 @@
 | `design`    | 에이전트     | 설계·구조 결정 (architect 중심) + ADR. **⛔ 수용기준(AC)과 그것을 검증하는 상호작용 스펙을 여기서 확정한다** — `harness/plan.json` 의 `acceptance[]` + `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"` 태그). verify 의 스펙·AC 문제는 이 페이즈로 되돌아온다 |
 | `implement` | 에이전트     | 코드 구현 (ui/entity-modeler 등).                                                     |
 | `verify`    | **드라이버** | ①프리플라이트(스펙·AC 커버리지, 0초) → ②`done-gate --deterministic-only` → ③`eval-scenario`(실제 조작). |
-| `evaluate`  | 에이전트     | **드라이버가 `eval-playwright` 를 먼저 실행**(캡처물+베이스라인 생성, 이번 사이클 산출물 없으면 차단) → customer/quality/ux 가 캡처물을 보고 `harness/evaluations/<id>.json` 의 score·complaints 를 조정. |
+| `evaluate`  | **드라이버+격리 세션** | 드라이버가 `eval-playwright`(캡처물+베이스라인) → **`eval-review`(격리 채점 세션)** 를 실행. 주관 조정은 격리 세션만 수행하며, 이번 사이클 산출물+리뷰 스탬프 없으면 차단. ⛔ 오케스트레이터·서브에이전트는 `<id>.json` 의 score·complaints 를 **편집 금지**(리뷰 후 변조는 done-gate FAIL). |
 | `debate`    | 에이전트     | 평가 결과 토론·반박 → 재작업 결정. **드라이버**가 결과(pass/rework)로 전이 분기.       |
 | `vote`      | 에이전트     | (분기) 재작업 5회 초과 시에만 진입. 다수결+CEO 캐스팅보트 → `harness/decisions/<id>.md`. |
 | `merge`     | **드라이버** | done-gate 통과 시 `git-flow merge-step` → step 브랜치 push → main 병합 → main push(원격 시)                        |
@@ -66,7 +66,7 @@
 | `decompose` | 스탬프 찍힌 결정 기록 | `node scripts/record-decision.mjs --phase=decompose --topic=… --conclusion=… --why=…` | `산출물결함` → decompose 재실행 |
 | `design` | ① 스펙·AC 계약(`plan.json` acceptance ↔ `eval-scenario.json` 의 `ac` 태그) ② 설계 결정 기록 | ① 두 파일 작성 ② `--phase=design` 기록 | ①은 `설계결함`, ②는 `산출물결함` → design 재실행 |
 | `implement` | **진입 시점 대비 코드 변경**(`harness/`·`docs/` 제외) | 실제 구현. 코드가 필요 없으면 `--phase=implement` 로 **면제 사유 기록** | `구현결함` → implement 재실행 |
-| `evaluate` | 이번 사이클 평가 산출물 | 드라이버가 `eval-playwright` 를 직접 실행(§evaluate) | `검증결함` → evaluate 재실행 |
+| `evaluate` | 이번 사이클 평가 산출물 + **격리 리뷰 스탬프** | 드라이버가 `eval-playwright` → `eval-review`(격리 채점 세션)를 직접 실행(§evaluate) | `검증결함` → evaluate 재실행 |
 | `debate` | 토론 결론 기록 | `--phase=debate` 기록 | `산출물결함` → debate 재실행 |
 | `vote` | 투표 결과 기록 | `--phase=vote` 기록 | `산출물결함` → vote 재실행 |
 
@@ -80,21 +80,31 @@
   계약이 비활성이고, `implement` 의 코드 검사는 git 이 없으면 생략된다. 그 외 **산출물 부재는 실패**다.
 - 지금 무엇이 빠졌는지는 `node scripts/status.mjs` 의 `산출물 계약` 줄과 `다음 1개 행동`이 알려준다.
 
-## evaluate — 캡처물(스크린샷+DOM) 소비 평가 ⛔ (무조건)
+## evaluate — 격리 채점 (캡처물 소비는 **격리 세션**이 수행) ⛔ (코드 강제)
 
-> ✅ **실행은 코드가 강제한다** — `loop.mjs` 의 evaluate 페이즈가 `eval-playwright.mjs` 를 **직접 실행**하고,
-> 이번 사이클(`cycleId`)의 평가 산출물이 생기지 않으면 **전진을 차단**한다(검증결함 → evaluate 재시도).
-> 즉 아래 1번은 이미 수행된 상태로 페이즈가 시작된다. **당신이 할 일은 2~3번(캡처물을 보고 판정 반영)이다.**
-> (예전에는 1번도 md 지시뿐이어서 `eval-playwright.mjs` 의 호출자가 0건이었다 — 2차 자기진단 F17.)
+> ✅ **실행·반영·검증 전부 코드가 강제한다** — `loop.mjs` 의 evaluate 페이즈가
+> ① `eval-playwright.mjs`(루브릭 베이스라인 + 캡처물 생성) → ② `eval-review.mjs`(**격리 채점 세션**)를
+> 직접 실행하고, 이번 사이클(`cycleId`) 산출물 + **격리 리뷰 스탬프**가 없으면 전진을 차단한다
+> (검증결함 → evaluate 재시도). 사양: `docs/spec/session-isolation-2026-08-11.md`.
 
-> ⛔ **UI/UX 평가를 루브릭 숫자만으로 끝내지 않는다.** `eval-playwright.mjs` 는 `harness/evaluations/<id>/` 에 **`screenshot.png`(데스크톱)·`screenshot-mobile.png`(375px)·`dom.html`** 를 남긴다. 오케스트레이터는 evaluate 에서:
->
-> 1. (코드가 수행) `eval-playwright.mjs` 로 루브릭 베이스라인 + 캡처물을 생성한다.
-> 2. **customer·quality·ux 에이전트가 그 `screenshot.png`(+모바일) 이미지를 `Read` 로 직접 "보고"(이미지가 렌더됨), `dom.html` 을 읽고** 레이아웃·여백(padding)·정렬·간격·시각 위계·반응형·사용 흐름·a11y 를 평가한다(투입 subset 은 `docs/agent-roster.md` 기준 — CEO 가 roster 에서 조정 가능).
-> 3. 그 시각/UX 판정을 `evaluations/<id>.json` 의 `score`·`complaints` 로 **반영**한다(시각/UX 결함 = minor~major). 루브릭("앱이 떴는가")은 **하한**일 뿐, "잘 보이는가·쓸 만한가"는 **캡처물을 본 에이전트**가 정한다.
-> 4. UI/UX 결함이 나오면 🚨 이슈 트래커 행 + 회의(§6)로 처리 → rework.
->
-> ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키면 **평가 무효**(실제 사고: 사이드 padding 없는 UI 가 96점 통과). `config.useMcp=false`/Playwright 미설치일 때만 정적 폴백.
+**왜 격리인가**: 주관 점수(done-gate 임계 90/88·major 판정)의 최종 반영을 구현을 지휘한 메인 세션이
+쥐고 있으면 점수의 독립성이 없다("계획·개발·채점은 다른 세션" — 사용자 지시). 그래서:
+
+1. **캡처물 채점은 격리 세션이 한다** — `eval-review.mjs` 가 fresh `claude -p`(읽기 전용 `Read`,
+   대화 이력 무공유)를 띄우고, 캡처물(`screenshot.png`·`screenshot-mobile.png`·`dom.html`)·
+   `plan.json`(AC)·루브릭만 입력으로 준다. 리뷰어 프롬프트가 기존 customer §캡처물 소비 관점
+   (여백·정렬·위계·반응형·상태·a11y·AC 대조)을 그대로 수행한다.
+2. **하향 단조** — 격리 리뷰는 점수를 낮추거나 불만을 추가만 할 수 있다. 상향은 결함을 고친 뒤
+   재작업 라운드의 코드 재계측으로만 가능하다.
+3. ⛔ **오케스트레이터·서브에이전트는 `evaluations/<id>.json` 의 score·complaints 를 편집하지 않는다.**
+   리뷰 반영 직후의 정규화 해시가 스탬프에 남고 done-gate 가 재검증하므로, 손대면 병합이 막힌다
+   (게이트 사유: "격리 리뷰 이후 평가가 변조됨").
+4. **customer·quality·ux 의 역할은 debate 로 이동** — 격리 리뷰 결과(`<id>.json` + `<id>/review.json`)와
+   캡처물을 읽고 pass/rework 토론에 `주장:이유` 로 참여한다. UI/UX 결함이 나오면 🚨 이슈 트래커 행 +
+   회의(§6)로 처리 → rework.
+
+> ⚠️ claude CLI 부재(환경 부재)일 때만 `skipped-no-tool` 로 기록된 skip. `HARNESS_REVIEW_CMD` 오버라이드는
+> 셀프테스트/CI 전용이며 스탬프 `cmd` 에 노출된다 — 자율 루프에서 사용 금지(사용 = 평가 무효).
 
 ## verify/QA — 상호작용(E2E) 검증 ✅ (이제 코드 강제)
 
