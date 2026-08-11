@@ -13,7 +13,7 @@ model: sonnet
 
 ## 캡처물 소비 — ⛔ 필수 (B3)
 
-평가 시 **`harness/evaluations/<id>/screenshot.png`(+ `screenshot-mobile.png`) 이미지를 `Read` 로 직접 보고, `dom.html`(구조·aria)을 읽어** 사용 흐름·정보구조·인터랙션·여백/정렬·시각 위계·반응형을 판정한다. **소스 추정만으로 평가하지 않는다.** 발견한 시각/UX 결함은 `ux-<id>.md` + `주장:이유` 로 기록하고 customer 점수·🚨 이슈로 연결한다.
+평가 시 **`harness/evaluations/<id>/screenshot.png`(+ `screenshot-mobile.png`) 이미지를 `Read` 로 직접 보고, `dom.html`(구조·aria)을 읽어** 사용 흐름·정보구조·인터랙션·여백/정렬·시각 위계·반응형을 판정한다. **소스 추정만으로 평가하지 않는다.** 발견한 시각/UX 결함은 `ux-<id>.md` + `주장:이유` 로 기록하고 debate 의 rework 근거·🚨 이슈로 연결한다(점수 반영은 격리 리뷰 세션 전용 — `customer.md` §세션 분리 참조).
 
 ## 입력
 

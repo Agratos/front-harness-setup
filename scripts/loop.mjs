@@ -26,6 +26,7 @@ import { pathToFileURL } from 'node:url';
 
 import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, wasInterrupted, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
+import { verifyEvalReview } from './eval-review.mjs';
 import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
 import { acquireLock, releaseLock } from './lib/lock.mjs';
 import { logError } from './lib/log.mjs';
@@ -520,9 +521,36 @@ function runEvaluatePhase(state, repoRoot) {
 			note: `eval-playwright exit ${r.code} — 최신 평가 ${latest.id} 의 cycleId=${latest.cycleId} ≠ 이번 사이클 ${want}`,
 		};
 	}
+	// ── 세션 분리 1단계 (docs/spec/session-isolation-2026-08-11.md §4.1) ──
+	// 주관 채점은 **격리 세션**(fresh `claude -p`, 읽기 전용, 파일 입력만)이 수행해야 한다.
+	// 베이스라인(코드 계측)이 생긴 것만으로는 evaluate 산출물이 완성되지 않는다 —
+	// 이번 사이클 평가에 격리 리뷰 스탬프가 찍혀야 전진한다. 스탬프 발급자는 eval-review.mjs 뿐이다.
+	const reviewScript = path.join(repoRoot, 'scripts', 'eval-review.mjs');
+	if (!existsSync(reviewScript)) {
+		// 스켈레톤·셀프테스트 임시 cwd — 리뷰 계약 자체가 비활성(환경 부재)
+		return {
+			ok: true,
+			note: `eval-playwright ok — ${latest.id} (score=${latest.score} major=${latest.majorComplaints} cycle=${latest.cycleId}) | 격리 리뷰 생략(eval-review.mjs 없음 — 환경 부재)`,
+		};
+	}
+	const rr = runNode([reviewScript, `--id=${latest.id}`], repoRoot);
+	if (rr.code !== 0) {
+		return {
+			ok: false,
+			evaluate: 'review-failed',
+			note: `격리 리뷰 실패(eval-review exit ${rr.code}) — ${latest.id} / 리뷰어 세션 로그 확인`,
+		};
+	}
+	// 스탬프 검증은 eval-review 의 판정 함수를 그대로 쓴다 — 규칙을 두 곳에 적으면 반드시 어긋난다.
+	const rv = verifyEvalReview(repoRoot, latest.id);
+	if (!rv.ok) {
+		return { ok: false, evaluate: 'no-review', note: `격리 리뷰 스탬프 검증 실패 — ${rv.reason}` };
+	}
+	// 리뷰가 점수를 낮췄을 수 있으므로 재읽기해 최종 숫자를 보고한다.
+	const reviewed = loadLatestEvaluation(repoRoot) ?? latest;
 	return {
 		ok: true,
-		note: `eval-playwright ok — ${latest.id} (score=${latest.score} major=${latest.majorComplaints} cycle=${latest.cycleId})`,
+		note: `eval-playwright ok — ${latest.id} (score=${reviewed.score} major=${reviewed.majorComplaints} cycle=${latest.cycleId}) | 격리 리뷰 ${rv.mode}`,
 	};
 }
 

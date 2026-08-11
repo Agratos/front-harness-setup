@@ -16,17 +16,31 @@ harness-setup 의 한 사이클 산출물을 **실사용 관점에서 평가** �
 5. **기록**: `<id>.json`(머신리더블, done-gate 계약 필드 `score`/`majorComplaints`) + `<id>.md`(사람용).
 6. **TEARDOWN(필수)**: 항상 `finally` 에서 dev 서버 프로세스 트리를 종료하고 포트 해제를 검증.
 
-## 캡처물 소비 — ⛔ 필수 (루브릭 숫자는 하한일 뿐)
+## 격리 채점 리뷰 — ⛔ 필수 (세션 분리 1단계, 루브릭 숫자는 하한일 뿐)
 
-스크립트 실행으로 평가를 끝내지 않습니다. `eval-playwright.mjs` 가 `harness/evaluations/<id>/` 에 남긴
-**`screenshot.png`(데스크톱)·`screenshot-mobile.png`(375px)·`dom.html`** 을 `Read` 로 **직접 열어 보고**
-레이아웃·여백(사이드 padding)·정렬·시각 위계·반응형·빈/에러/로딩 상태를 판정한 뒤, 그 결과를
-`<id>.json` 의 `score`·`complaints` 에 반영합니다(시각/UX 결함 = minor~major, major 면 done-gate FAIL).
+스크립트 실행으로 평가가 끝나지 않습니다. 캡처물(`screenshot.png`·`screenshot-mobile.png`·`dom.html`)을
+보고 레이아웃·여백·시각 위계·반응형·상태·AC 대조를 판정하는 **주관 채점은 격리 세션이 수행**합니다
+(사양: `docs/spec/session-isolation-2026-08-11.md`):
 
-> ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키면 **평가 무효**입니다
-> (실제 사고: 사이드 padding 없는 UI 가 96점 통과). 루브릭("앱이 떴는가")은 하한이고,
-> "잘 보이는가·쓸 만한가"는 캡처물을 본 에이전트가 정합니다.
-> 상세 절차: [run-cycle.md](run-cycle.md) §evaluate · [customer.md](../agents/customer.md) §캡처물 소비.
+```bash
+# 베이스라인 평가에 격리 리뷰를 붙인다 (loop 의 evaluate 페이즈는 이걸 자동 실행)
+node scripts/eval-review.mjs --id=eval-0007
+```
+
+- `eval-review.mjs` 가 fresh `claude -p`(읽기 전용 `Read`, 대화 이력 무공유)를 띄워 verdict 를 받고,
+  **하향 단조**(점수 낮추기·불만 추가만)로 `<id>.json` 에 반영 + 격리 스탬프(`review` 필드)를 찍습니다.
+- ⛔ **오케스트레이터·서브에이전트는 `<id>.json` 의 score·complaints 를 편집하지 않습니다** —
+  리뷰 직후의 정규화 해시를 done-gate 가 재검증하므로, 손대면 병합이 막힙니다(변조 판정).
+- 리뷰어 원문·프롬프트는 `harness/evaluations/<id>/review.json`·`review-prompt.md` 에 보존됩니다.
+- exit code: **0** 반영 완료·기록된 환경 부재(claude CLI 없음 = `skipped-no-tool`) / **1** 리뷰어
+  실행·verdict 파싱 실패(재시도 대상) / **2** 대상 평가 없음.
+- `HARNESS_REVIEW_CMD`·`HARNESS_REVIEW_MODEL` — 셀프테스트/CI 전용 오버라이드. 스탬프 `cmd` 에
+  노출되며, 자율 루프에서 사용하면 평가 무효입니다.
+
+> ⚠️ 캡처물을 보지 않은 통과는 **평가 무효**입니다(실제 사고: 사이드 padding 없는 UI 가 96점 통과).
+> 루브릭("앱이 떴는가")은 하한이고, "잘 보이는가·쓸 만한가"는 격리 리뷰 세션이 정합니다.
+> customer/quality/ux 는 리뷰 결과·캡처물을 읽고 **debate 발언**으로 참여합니다.
+> 상세 절차: [run-cycle.md](run-cycle.md) §evaluate · [customer.md](../agents/customer.md).
 
 ## 실행
 
