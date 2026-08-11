@@ -67,6 +67,21 @@
 | 검증결함 | `merge` 실패인데 결정적 게이트는 green (평가 임계·stale) · 평가 산출물 미생성 | `evaluate` |
 | 산출물결함 | 에이전트 페이즈의 **이번 사이클 결정 기록이 없음**(페이즈 산출물 계약) | 같은 페이즈 |
 
+### `harness/state.lock` — 드라이버 단일 실행 잠금 (single-writer)
+
+`loop.mjs` CLI 는 실행 전 이 파일을 배타적으로 생성하고 종료 시 삭제합니다(`lib/lock.mjs`).
+수동 실행과 재개 루프가 겹치면 state.json 의 read-modify-write 가 경합해 마지막 쓰기가 이기므로,
+**드라이버는 프로젝트당 한 번에 하나**만 돕니다(조직 가이드의 단일 조율 허브 원칙).
+
+- 내용: `{ pid, holder, acquiredAt }` — 누가·언제 잡았는지의 흔적(원장).
+- 잠금 보유 중 재실행하면 **exit 4** 로 거부합니다(사유·보유 pid 출력).
+- 보유 프로세스가 죽었거나 15분(`LOCK_STALE_MS`) 넘게 오래되면 자동 인수(takeover)합니다 — 크래시가 루프를 영구히 잠그지 않습니다.
+- `.gitignore` 대상(런타임 파일). 검증: `node scripts/lib/lock.selftest.mjs`.
+
+또한 `loop.mjs` 는 결정적 페이즈(자식 done-gate 가 latch 를 state 에 영속화)를 실행한 직후
+**디스크에서 `scores` 를 재읽어 병합**합니다 — 부모의 오래된 메모리 사본으로 덮어써
+래치가 유실되는 read-modify-write 경합을 막습니다(정본주의).
+
 ### `harness/gate-status.json` — 게이트 실측 결과
 
 `done-gate` 가 결정적 게이트를 돌린 뒤 결과를 남기는 파일입니다. `{ passed, gates[], cycleId, stepId, phaseSeq, createdAt }`.
@@ -162,7 +177,7 @@ wasInterrupted : lastExecutedPhaseSeq === phaseSeq  AND  committed === false
 ### `harness/decisions/` — 의사결정 로그
 
 쟁점별 토론·합의 기록입니다. 파일명(실제 규칙, `lib/log.mjs` `logDecision`): `decision-<seq 4자리>.md`
-(예: `decision-0001.md`, 기존 파일 수 기반 결정적 시퀀스). 그 외에 역할별 보조 산출물
+(예: `decision-0001.md`, 기존 최대 시퀀스 + 1 — 삭제에도 단조 유지). 그 외에 역할별 보조 산출물
 (`<id>-roster.md`(CEO), `<id>-arch.md`(architect))도 같은 디렉터리에 남습니다.
 
 | 키            | 설명                                                  |
@@ -198,7 +213,7 @@ JSON 형태 예:
 ### `harness/errors/` — 오류 로그
 
 실패/수정 기록입니다. 파일명(실제 규칙, `lib/log.mjs` `logError`): `<phase>-<seq 4자리>.md`
-(예: `verify-0001.md`, 기존 `.md` 파일 수 기반 결정적 시퀀스). 형식은 **마크다운**(JSON 아님).
+(예: `verify-0001.md`, 기존 최대 시퀀스 + 1 — 삭제에도 단조 유지). 형식은 **마크다운**(JSON 아님).
 
 | 키             | 설명                     |
 | -------------- | ------------------------ |

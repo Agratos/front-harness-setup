@@ -16,6 +16,9 @@ dist/
 # 하네스 런타임 상태 (페이즈마다 변동 — 추적 제외; merge 체크아웃 충돌 방지)
 harness/state.json
 
+# 드라이버 단일 실행 잠금 (loop.mjs 가 획득·해제하는 런타임 파일)
+harness/state.lock
+
 # 하네스 사이클 로그(페이즈마다 변동 — merge 체크아웃 충돌 방지, state.json 과 동일 성격)
 harness/cycles/cycle-log.ndjson
 

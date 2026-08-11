@@ -27,6 +27,7 @@ import { pathToFileURL } from 'node:url';
 import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, wasInterrupted, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
 import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
+import { acquireLock, releaseLock } from './lib/lock.mjs';
 import { logError } from './lib/log.mjs';
 import { checkPhaseContract, codeFingerprint, PHASE_CONTRACT } from './lib/phase-gate.mjs';
 import { planPath, validatePlan } from './lib/plan.mjs';
@@ -660,6 +661,11 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 
 	if (DETERMINISTIC_PHASES.has(phase)) {
 		const r = runDeterministicPhase(phase, state, repoRoot);
+		// 정본주의(조직 가이드): 자식 프로세스(done-gate)가 방금 state.json 에 영속화한
+		// 래치(scores[stepId].latched)를 디스크에서 재읽어 병합한다. 부모의 오래된 메모리
+		// 사본으로 그대로 writeState 하면 자식이 쓴 래치가 조용히 유실된다(read-modify-write 경합).
+		const diskAfterChild = readState(statePath);
+		if (diskAfterChild?.scores) state = { ...state, scores: diskAfterChild.scores };
 		note = `결정적 페이즈 '${phase}': ${r.note}`;
 		log(note);
 		if (!r.ok) {
@@ -1020,7 +1026,26 @@ function main() {
 	const resume = argv.includes('--resume');
 	const force = argv.includes('--force');
 
-	const { state, executedPhase, rerun, note, done } = runOnce({ repoRoot, initSteps, debateOutcome, resume, force });
+	// 드라이버 단일 실행 잠금(single-writer) — 조율 허브는 프로젝트당 하나(조직 가이드).
+	// 수동 실행과 재개 루프(/loop)가 겹치면 state.json 의 read-modify-write 가 경합해
+	// 마지막 쓰기가 이긴다. 잠금 파일(harness/state.lock)이 흔적(pid·시각)을 남긴다.
+	const lock = acquireLock(repoRoot, { holder: `loop pid=${process.pid}` });
+	if (!lock.ok) {
+		console.error(
+			`[loop] 동시 실행 거부: 다른 드라이버가 잠금 보유 중 (pid=${lock.pid ?? '?'}, since=${lock.acquiredAt ?? '?'}). ` +
+				`이중 실행은 state.json 정본을 오염시킵니다. 해당 프로세스 종료를 기다리세요 — ` +
+				`죽은 잠금은 자동 인수되며, 수동 해제는 ${path.relative(repoRoot, lock.path)} 삭제.`,
+		);
+		process.exit(4);
+	}
+
+	let runResult;
+	try {
+		runResult = runOnce({ repoRoot, initSteps, debateOutcome, resume, force });
+	} finally {
+		releaseLock(repoRoot);
+	}
+	const { state, executedPhase, rerun, note, done } = runResult;
 
 	const failNow = (state.failures ?? {})[state.phase] ?? 0;
 	console.log('=== loop (1 phase / invocation) ===');

@@ -81,6 +81,22 @@ try {
 	assert(errorFilePath !== errorFilePath2, '두 번째 logError 는 다른 파일명 생성');
 	assert(existsSync(errorFilePath2), '두 번째 오류 파일 생성됨');
 
+	// ── 1b) 시퀀스 단조성 — 파일 삭제 후에도 기존 id 를 재사용(덮어쓰기)하지 않는다 ──
+	// 예전 count 기반 시퀀스는 첫 파일을 지우면 count 가 줄어 두 번째 파일의 id 와 충돌해
+	// 이전 오류 기록을 덮어썼다(원장 유실). max+1 은 삭제에도 단조를 유지한다.
+	const content2Before = readFileSync(errorFilePath2, 'utf8');
+	rmSync(errorFilePath, { force: true });
+	const errorFilePath3 = logError(tmpRoot, {
+		phase: 'merge',
+		where: 'scripts/git-flow.mjs',
+		message: '세 번째 오류',
+		cause: '삭제 후 단조성 검증',
+		fixSummary: '-',
+	});
+	assert(errorFilePath3 !== errorFilePath2, '삭제 후 세 번째 logError 가 기존 파일 id 를 재사용하지 않음');
+	assert(readFileSync(errorFilePath2, 'utf8') === content2Before, '기존 오류 기록이 덮어써지지 않고 보존됨');
+	assert(/-(0003)\.md$/.test(errorFilePath3), '세 번째 id 가 최대 시퀀스+1(0003) 로 발급됨');
+
 	// ── 2) logCycle 검증 ──────────────────────────────────────────────────────
 	console.log('[selftest] logCycle 검증...');
 

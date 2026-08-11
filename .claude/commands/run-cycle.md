@@ -191,6 +191,7 @@ node scripts/loop.mjs
 ```
 
 - 각 호출은 현재 페이즈 1개를 실행하고 다음 페이즈로 전진합니다.
+- **단일 실행 잠금**: 드라이버는 한 번에 하나만 돈다(`harness/state.lock`). 다른 드라이버가 돌고 있으면 **exit 4** 로 거부된다 — 병렬로 다시 띄우지 말고 기존 실행이 끝나길 기다린다(죽은 잠금은 자동 인수).
 - `merge` 후 다음 step 이 있으면 그 step 의 `decompose` 로 래핑, 없으면 `status=done`.
 - **멱등 재개**: 페이즈 실행 중 크래시했으면(`lastExecutedPhaseSeq === phaseSeq` + 미커밋)
   건너뛰지 않고 현재 페이즈를 재실행합니다(`RERUN` 표시).

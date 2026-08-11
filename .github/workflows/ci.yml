@@ -40,6 +40,7 @@ jobs:
       - name: Self-tests
         run: |
           node scripts/lib/state.selftest.mjs
+          node scripts/lib/lock.selftest.mjs
           node scripts/plan.selftest.mjs
           node scripts/git-flow.selftest.mjs
           node scripts/done-gate.selftest.mjs

@@ -1,7 +1,7 @@
 // log.mjs — 투명성 로깅 헬퍼 (US-008 / US-010)
 //
 // logError: harness/errors/<id>.md 에 오류 1건을 기록한다.
-//   id 는 결정적(deterministic) — phase 접두어 + 기존 파일 수 기반 시퀀스. Math.random/Date 미사용.
+//   id 는 결정적(deterministic) — phase 접두어 + 기존 최대 시퀀스 + 1. Math.random/Date 미사용.
 //
 // logCycle: harness/cycles/cycle-log.ndjson 에 사이클 진행 1줄을 append 한다.
 //   loop.mjs 의 appendCycleLog / cycleEntry 와 동일 형식을 사용해 포맷 충돌 방지.
@@ -19,7 +19,7 @@ import { mirrorDecisionComment } from './notion.mjs';
  * 오류 로그를 harness/errors/<id>.md 에 기록한다.
  *
  * id 생성 규칙 (결정적, 단조):
- *   - harness/errors/ 의 현재 .md 파일 수(example- 제외)를 세어 seq 결정.
+ *   - harness/errors/ 의 기존 `*-NNNN.md` 최대 시퀀스 + 1 (example- 제외, 삭제에도 단조 유지).
  *   - id = `${phase}-${zeroPad(seq, 4)}` (예: `verify-0001`)
  *   - 파일명 = `${id}.md`
  *
@@ -37,17 +37,21 @@ export function logError(repoRoot, { phase, where, message, cause, fixSummary })
 	const dir = path.join(repoRoot, 'harness', 'errors');
 	mkdirSync(dir, { recursive: true });
 
-	// 기존 .md 파일 수 세기 (example- 접두어 파일 제외 — 데모 항목은 시퀀스에 미포함)
-	let existingCount = 0;
+	// 기존 파일의 **최대 시퀀스 번호 + 1** (example- 접두어 데모 항목 제외).
+	// 예전에는 파일 수를 셌는데, 파일이 하나라도 삭제되면 count 가 줄어 기존 id 와
+	// 충돌 → 이전 오류 기록을 **덮어썼다**(원장 유실). max+1 은 삭제에도 단조를 유지한다.
+	let maxSeq = 0;
 	try {
-		existingCount = readdirSync(dir).filter(
-			(f) => f.endsWith('.md') && !f.startsWith('example-') && f !== '.gitkeep',
-		).length;
+		for (const f of readdirSync(dir)) {
+			if (!f.endsWith('.md') || f.startsWith('example-')) continue;
+			const m = /-(\d+)\.md$/.exec(f);
+			if (m) maxSeq = Math.max(maxSeq, Number(m[1]));
+		}
 	} catch {
-		existingCount = 0;
+		maxSeq = 0;
 	}
 
-	const seq = existingCount + 1;
+	const seq = maxSeq + 1;
 	const id = `${phase}-${String(seq).padStart(4, '0')}`;
 	const filePath = path.join(dir, `${id}.md`);
 
@@ -140,7 +144,7 @@ export function logCycle(repoRoot, { step, phase, note, phaseSeq, checkpointToke
  *   안건 / 제기자 / 주장:이유[] / 관점·반박 / 타협 / 결론+근거(why) / 영향 / 연결단계
  *
  * id 생성 규칙 (결정적, 단조):
- *   - harness/decisions/ 의 현재 .md 파일 수(example- / -roster / -arch 보조파일 제외)를 세어 seq 결정.
+ *   - harness/decisions/ 의 기존 decision-*.md 최대 시퀀스 + 1 (삭제에도 단조 유지).
  *   - id = `decision-${zeroPad(seq, 4)}` (예: `decision-0001`)
  *   - 파일명 = `${id}.md`
  *   - Math.random / Date 미사용 → 동일 디렉터리 상태면 항상 같은 id.
@@ -168,23 +172,20 @@ export function logDecision(
 	const dir = path.join(repoRoot, 'harness', 'decisions');
 	mkdirSync(dir, { recursive: true });
 
-	// 기존 decision-*.md 파일 수 세기.
-	// example-/-roster/-arch 등 보조·데모 파일은 시퀀스에서 제외(logError 와 동일 정책).
-	let existingCount = 0;
+	// 기존 decision-*.md 의 **최대 시퀀스 번호 + 1** (logError 와 동일 정책 — 파일 수 기반은
+	// 삭제 시 count 가 줄어 기존 id 와 충돌해 이전 결정 기록을 덮어썼다).
+	// example-/-roster/-arch 등 보조·데모 파일은 패턴 불일치로 자연 제외된다.
+	let maxSeq = 0;
 	try {
-		existingCount = readdirSync(dir).filter(
-			(f) =>
-				f.endsWith('.md') &&
-				!f.startsWith('example-') &&
-				!f.endsWith('-roster.md') &&
-				!f.endsWith('-arch.md') &&
-				f !== '.gitkeep',
-		).length;
+		for (const f of readdirSync(dir)) {
+			const m = /^decision-(\d+)\.md$/.exec(f);
+			if (m) maxSeq = Math.max(maxSeq, Number(m[1]));
+		}
 	} catch {
-		existingCount = 0;
+		maxSeq = 0;
 	}
 
-	const seq = existingCount + 1;
+	const seq = maxSeq + 1;
 	const id = `decision-${String(seq).padStart(4, '0')}`;
 	const filePath = path.join(dir, `${id}.md`);
 
