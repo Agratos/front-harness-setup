@@ -17,6 +17,29 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const repoRoot = process.cwd();
+
+/**
+ * state.json 이 가리키는 현재 step 의 {nn, slug} — 규칙의 정의는 loop.mjs 의 deriveStepRef 하나다.
+ *
+ * 왜 지연(dynamic) import 인가: git-flow.mjs 는 **단독 복사로도 실행되는 파일**이다
+ * (loop.selftest 시나리오 C 가 이 파일만 temp/scripts/ 로 복사해 돌린다). 정적 import 는
+ * 그 환경에서 모듈 해석 자체를 깨뜨리므로, 이웃 모듈이 없으면 검사를 환경 부재로 생략한다.
+ * 실제 저장소·드라이버 경로에서는 항상 로드되어 검사가 활성이다.
+ * @returns {Promise<{nn:string, slug:string, label:string}|null>} state 없음/모듈 없음이면 null
+ */
+async function currentStepRefSafe() {
+	try {
+		const [{ readState, stateFilePath }, { deriveStepRef }] = await Promise.all([
+			import('./lib/state.mjs'),
+			import('./loop.mjs'),
+		]);
+		const st = readState(stateFilePath(repoRoot));
+		if (st && Array.isArray(st.planSteps) && st.planSteps.length > 0) return deriveStepRef(st);
+		return null;
+	} catch {
+		return null; // 모듈 부재(단독 복사 실행) — 검사 생략
+	}
+}
 const harnessDir = path.join(repoRoot, 'harness');
 const configPath = path.join(harnessDir, 'config.json');
 
@@ -158,7 +181,33 @@ export function ensureMainGuardHook() {
 	if (existsSync(hookPath)) {
 		const existing = readFileSync(hookPath, 'utf8');
 		if (existing.includes(MAIN_GUARD_MARKER)) return; // 이미 설치됨 (멱등)
-		log(`경고: 기존 pre-commit 훅이 있어 main 가드 훅을 설치하지 않았습니다 (${hookPath})`);
+		// 기존 훅(husky 등)이 있으면 덮지 않고 **체이닝**한다 — 가드 블록을 셔뱅 바로 뒤에 삽입.
+		// (감사 발견: 예전에는 경고만 남기고 포기해서, 기존 훅이 있는 저장소에선 main 가드가 없었다.)
+		// 뒤에 붙이면 기존 훅의 `exit 0` 이 가드를 영원히 건너뛰므로 **앞에** 넣는다. 체이닝 가드는
+		// 통과 시 아무 부작용 없이 기존 훅으로 흘러가고, 위반 시에만 exit 1 한다(standalone 판과 달리
+		// HARNESS_ALLOW_MAIN=1 에서 exit 0 하지 않는다 — 그러면 기존 훅이 통째로 건너뛰어진다).
+		const chainedGuard = [
+			`# ${MAIN_GUARD_MARKER} — 직접 main 커밋 차단 (기존 훅 앞에 체이닝, git-flow.mjs 가 삽입)`,
+			'if [ "$HARNESS_ALLOW_MAIN" != "1" ]; then',
+			'  hmg_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)',
+			'  if [ "$hmg_branch" = "main" ] && git rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1 && [ ! -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then',
+			'    echo "[git-flow] 직접 main 커밋 거부: start-step 으로 step 브랜치를 만들고 merge-step 으로 병합하세요. (의도적 우회: HARNESS_ALLOW_MAIN=1)" >&2',
+			'    exit 1',
+			'  fi',
+			'fi',
+		];
+		const lines = existing.split('\n');
+		const hasShebang = (lines[0] ?? '').startsWith('#!');
+		const merged = hasShebang
+			? [lines[0], ...chainedGuard, ...lines.slice(1)].join('\n')
+			: ['#!/bin/sh', ...chainedGuard, ...lines].join('\n');
+		writeFileSync(hookPath, merged, 'utf8');
+		try {
+			chmodSync(hookPath, 0o755);
+		} catch {
+			/* Windows: chmod 불필요 */
+		}
+		log('main 가드 훅 체이닝: 기존 pre-commit 훅 앞에 가드 블록 삽입 (기존 훅 유지)');
 		return;
 	}
 	const script = [
@@ -301,7 +350,7 @@ function gitSafeNode(args) {
 }
 
 /** merge-step <nn> <slug>: done-gate 통과 시에만 step 을 main 에 병합 */
-function cmdMergeStep(nn, slug, extraArgs) {
+async function cmdMergeStep(nn, slug, extraArgs) {
 	if (shouldSkipGitFlow()) {
 		log('merge-step skipped (skipGitFlow=true / useGit=false) — no-op');
 		return 0;
@@ -313,6 +362,21 @@ function cmdMergeStep(nn, slug, extraArgs) {
 	}
 	if (!branchExists(branch)) {
 		fail(`merge-step 거부: 브랜치 '${branch}' 가 존재하지 않습니다.`);
+	}
+
+	// 현재 step 일치 검증 — state.json 이 가리키는 step 만 병합한다.
+	// merge-step 은 인자로 임의 브랜치를 받으므로, 게이트만 통과하면 **다른 step 브랜치**도
+	// 병합할 수 있었다(감사 발견 — 오케스트레이터의 step 착각을 잡는 방어선이 없었다).
+	// state.json 이 없거나 planSteps 가 비면(셀프테스트·수동 운용) 종전과 동일하게 검사하지 않는다.
+	if (!extraArgs.includes('--any-step')) {
+		const cur = await currentStepRefSafe();
+		if (cur && (cur.nn !== String(nn) || cur.slug !== String(slug))) {
+			fail(
+				`merge-step 거부: 현재 진행 step 은 'step/${cur.nn}-${cur.slug}' (state.json 기준)인데 ` +
+					`'${branch}' 병합을 요청했습니다. 다른 step 의 의도적 병합은 --any-step 을 명시하세요.`,
+				1,
+			);
+		}
 	}
 
 	// 빈 병합 차단 — 게이트(비싼 검사)보다 먼저. 커밋 없이 merge 로 온 경우를 즉시 잡는다.
@@ -336,6 +400,13 @@ function cmdMergeStep(nn, slug, extraArgs) {
 		fail(`merge-step 거부: done-gate 실패 — ${gate.reason}`, 1);
 	}
 	log(`done-gate 통과: ${gate.reason}`);
+
+	// main 전진 감지 — 게이트는 **step 브랜치 트리**에서 돌았다. main 이 분기점 이후 전진했다면
+	// 병합 결과는 "게이트를 통과한 적 없는 트리"가 된다(감사 발견 — 텍스트 충돌 없는 의미 충돌).
+	// 정상 운용(main 쓰기는 merge-step 뿐)에선 발생하지 않으므로, 전진한 경우에만 병합 후 재게이트한다.
+	const mergeBase = gitSafe(['merge-base', 'main', branch]);
+	const mainHead = gitSafe(['rev-parse', 'main']);
+	const mainAdvanced = mergeBase.ok && mainHead.ok && mergeBase.out !== mainHead.out;
 
 	// 테스트 통과분(step 브랜치)을 원격에 먼저 push 한다 — origin 있을 때만, 없으면 skip(자율 유지).
 	pushIfRemote(branch);
@@ -364,6 +435,29 @@ function cmdMergeStep(nn, slug, extraArgs) {
 	}
 	log(`merge-step 완료: '${branch}' → main 병합 (총 ${mainCommitCount()}개 커밋)`);
 
+	// main 이 전진해 있었다면 병합 **결과 트리**에서 결정적 게이트를 재실행한다.
+	// 실패하면 병합을 되돌린다(ORIG_HEAD) — 게이트 미통과 트리를 main 에 남기지 않는다.
+	if (mainAdvanced) {
+		const gatePath = path.join(repoRoot, 'scripts', 'done-gate.mjs');
+		if (existsSync(gatePath)) {
+			log('main 전진 감지 — 병합 결과 트리에서 결정적 게이트 재실행');
+			const re = gitSafeNode([gatePath, '--deterministic-only']);
+			if (re.code !== 0) {
+				gitSafe(['reset', '--hard', 'ORIG_HEAD']);
+				gitSafe(['checkout', branch]);
+				fail(
+					`merge-step 롤백: 병합 결과 트리가 결정적 게이트를 통과하지 못했습니다(exit ${re.code}). ` +
+						`main 을 병합 전으로 되돌리고 '${branch}' 로 복귀했습니다. ` +
+						`step 브랜치에서 main 을 병합해 결함을 해결한 뒤 merge-step 을 재시도하세요.`,
+					1,
+				);
+			}
+			log('병합 결과 재게이트 통과');
+		} else {
+			log('main 전진 감지 — done-gate.mjs 없음: 병합 결과 재게이트 생략(환경 부재)');
+		}
+	}
+
 	// 병합된 main 을 원격에 push (origin 있을 때만).
 	pushIfRemote('main');
 	return 0;
@@ -377,7 +471,7 @@ function usage() {
 			'사용법:',
 			'  node scripts/git-flow.mjs seed-main',
 			'  node scripts/git-flow.mjs start-step <nn> <slug>',
-			'  node scripts/git-flow.mjs merge-step <nn> <slug> [--gate-ok] [--vote-override] [--allow-empty]',
+			'  node scripts/git-flow.mjs merge-step <nn> <slug> [--gate-ok] [--vote-override] [--allow-empty] [--any-step]',
 			'',
 			'skipGitFlow=true(=useGit=false) 면 모든 명령은 no-op 입니다.',
 		].join('\n'),
@@ -396,7 +490,14 @@ function main() {
 		case 'start-step':
 			return process.exit(cmdStartStep(positional[0], positional[1]));
 		case 'merge-step':
-			return process.exit(cmdMergeStep(positional[0], positional[1], rest));
+			// cmdMergeStep 은 async (currentStepRefSafe 의 지연 import) — 완료 후 exit.
+			return void cmdMergeStep(positional[0], positional[1], rest).then(
+				(code) => process.exit(code),
+				(err) => {
+					console.error(`[git-flow] merge-step 예기치 못한 실패: ${err?.stack ?? err}`);
+					process.exit(1);
+				},
+			);
 		case undefined:
 		case '-h':
 		case '--help':

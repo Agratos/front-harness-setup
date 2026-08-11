@@ -21,12 +21,14 @@ harness-setup 자율 개발 루프에서 **브랜치 생성 → step 작업 → 
 - 이미 같은 이름의 브랜치가 있으면 체크아웃만 합니다.
 - main 이 아직 시드 안됐으면 거부합니다 (먼저 `seed-main` 필요).
 
-### `merge-step <nn> <slug> [--vote-override] [--allow-empty]` — done-gate 통과 시 병합
+### `merge-step <nn> <slug> [--vote-override] [--allow-empty] [--any-step]` — done-gate 통과 시 병합
 
-- 순서: **빈 병합 차단**(main 대비 커밋·변경 확인) → **done-gate** → (원격 있으면) step 브랜치 push → `--no-ff` 병합 → (원격 있으면) main push.
+- 순서: **현재 step 일치 검증**(state.json) → **빈 병합 차단**(main 대비 커밋·변경 확인) → **done-gate** → (원격 있으면) step 브랜치 push → `--no-ff` 병합 → (main 전진 시) **병합 결과 재게이트** → (원격 있으면) main push.
 - 게이트 실패 시 병합을 거부하고 `exit 1` + 사유를 로그로 남깁니다.
+- **현재 step 일치 검증**: `harness/state.json` 이 가리키는 현재 step 과 인자(`<nn> <slug>`)가 다르면 거부합니다 — 오케스트레이터가 step 을 착각해도 **다른 step 브랜치가 병합되지 않습니다**. 의도적 예외는 `--any-step` 명시(state.json 없으면 검사 생략 — 셀프테스트·수동 운용).
 - `--vote-override`: vote 페이즈 뒤 드라이버가 전달 — done-gate 의 **주관 임계(90/88)만 우회**하고 결정적 게이트(typecheck/lint/check-arch/test)는 그대로 강제합니다.
 - **병합 충돌 시 자동 abort**: 충돌이 나면 `merge --abort` 후 step 브랜치로 복귀하고 `exit 1` 로 실패합니다 — 반쯤 병합된 더티 main 을 남기지 않습니다. 충돌은 **step 브랜치에서 main 을 병합해 해결·커밋**한 뒤 merge-step 을 재시도하세요.
+- **main 전진 시 병합 결과 재게이트**: 게이트는 step 브랜치 트리에서 돌므로, main 이 분기점 이후 전진했다면 병합 결과는 게이트를 통과한 적 없는 트리입니다. 그 경우에만 병합 직후 main 트리에서 결정적 게이트를 재실행하고, 실패하면 `ORIG_HEAD` 로 롤백 + step 브랜치 복귀 + `exit 1` 합니다(정상 운용 — main 쓰기가 merge-step 뿐 — 에서는 발동하지 않아 비용 0).
 - 원격(`origin`)이 없으면 push 는 경고만 남기고 skip 합니다(자율 유지).
 
 ## merge-gate (done-gate) 판정 규칙
@@ -40,11 +42,11 @@ harness-setup 자율 개발 루프에서 **브랜치 생성 → step 작업 → 
 ## 직접 main 작업 차단 (pre-commit 훅 — 코드 강제)
 
 - step 작업은 반드시 `start-step` → (step 브랜치에서 작업) → `merge-step` 경로를 거쳐야 합니다.
-- **배선**: `seed-main`/`start-step` 이 `.git/hooks/pre-commit` 에 가드 훅을 설치합니다(`ensureMainGuardHook`, 멱등 — 기존 다른 훅이 있으면 덮지 않고 경고만). 시드 이후 main 에서의 직접 `git commit` 은 훅이 거부합니다.
+- **배선**: `seed-main`/`start-step` 이 `.git/hooks/pre-commit` 에 가드 훅을 설치합니다(`ensureMainGuardHook`, 멱등). 기존 다른 훅(husky 등)이 있으면 덮지 않고 **가드 블록을 셔뱅 바로 뒤에 체이닝**합니다 — 기존 훅은 그대로 실행되고, main 직접 커밋만 가드가 선행 차단합니다. 시드 이후 main 에서의 직접 `git commit` 은 훅이 거부합니다.
 - 예외: merge 진행 중 커밋(merge-step 의 충돌 마무리)·`HARNESS_ALLOW_MAIN=1`(의도적 우회)·시드 전(unborn).
 - `merge-step` 이 **시드 이후 main 에 쓰기를 하는 유일한 경로**입니다.
 - `assertNotDirectMainWork()` 함수는 같은 정책의 프로그램용 가드(export)이며, 실제 강제는 위 훅이 담당합니다.
-- 검증: `node scripts/git-flow.selftest.mjs` 시나리오 [7](훅 차단·우회)·[8](충돌 abort).
+- 검증: `node scripts/git-flow.selftest.mjs` 시나리오 [7](훅 차단·우회)·[8](충돌 abort)·[9](step 일치)·[10](병합 결과 재게이트)·[11](훅 체이닝).
 
 ## 커밋 메시지 규약 (Conventional Commits 기반)
 

@@ -274,9 +274,19 @@ export function loadLatestEvaluation(repoRoot) {
 
 /** 평가 소스 결정: 주입(--score/env) 우선, 없으면 최신 평가 파일 */
 function resolveEvaluation(opts, repoRoot) {
-	const injectedScore = opts.score ?? (process.env.HARNESS_EVAL_SCORE ? Number(process.env.HARNESS_EVAL_SCORE) : undefined);
-	const injectedMajor =
-		opts.majorComplaints ?? (process.env.HARNESS_EVAL_MAJOR ? Number(process.env.HARNESS_EVAL_MAJOR) : undefined);
+	// env 주입(HARNESS_EVAL_SCORE/MAJOR)은 **셀프테스트·CI 전용**이다. 이 env 하나로 루브릭 산출·
+	// 신선도·격리 리뷰 검증이 전부 면제되는데(F24), "자율 루프도 쓸 수 있는 환경변수" 로 열려 있어
+	// 세션 분리(격리 채점) 설계와 모순됐다(감사 발견). 이제 HARNESS_SELFTEST=1 또는 CI 밖에서는
+	// 무시하고 그 사실을 로그로 남긴다. (--score= CLI 플래그는 호출 커맨드라인에 그대로 드러나는
+	// 가시적 우회이므로 유지 — bypass 표기는 기존과 동일하게 남는다.)
+	const envInjectionAllowed = process.env.HARNESS_SELFTEST === '1' || Boolean(process.env.CI);
+	const envScoreRaw = process.env.HARNESS_EVAL_SCORE;
+	const envMajorRaw = process.env.HARNESS_EVAL_MAJOR;
+	if ((envScoreRaw || envMajorRaw) && !envInjectionAllowed) {
+		console.log('[done-gate] ⚠ HARNESS_EVAL_SCORE/MAJOR 무시 — env 주입은 HARNESS_SELFTEST=1 또는 CI 환경에서만 유효합니다');
+	}
+	const injectedScore = opts.score ?? (envScoreRaw && envInjectionAllowed ? Number(envScoreRaw) : undefined);
+	const injectedMajor = opts.majorComplaints ?? (envMajorRaw && envInjectionAllowed ? Number(envMajorRaw) : undefined);
 	if (injectedScore !== undefined) {
 		return { score: injectedScore, majorComplaints: injectedMajor ?? 0, id: 'injected', source: 'injected' };
 	}
