@@ -16,7 +16,7 @@ model: sonnet
 
 ## 입력
 
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - `harness/state.json` — 현재 하네스 상태
 - 구현된 컴포넌트 경로 (PM이 전달)
 - `docs/eval-rubric.md` — 품질 차원 배점
@@ -62,7 +62,7 @@ model: sonnet
 
 ## 사용 도구
 
-- **읽기**: `src/`, `docs/eval-rubric.md`, `harness/evaluations/`, `harness/state.json`, `.omc/plans/`, `package.json`, `vite.config.*`, `dist/`
+- **읽기**: `src/`, `docs/eval-rubric.md`, `harness/evaluations/`, `harness/state.json`, `harness/plan.json`, `package.json`, `vite.config.*`, `dist/`
 - **쓰기**: `harness/evaluations/quality-<id>.md`, `harness/evaluations/release-notes-<id>.md`
 - **실행**: `npx axe-core` 또는 Playwright a11y 감사, Lighthouse CLI (`npx lighthouse`), `yarn build` (또는 `npm run build`), `yarn preview`
 

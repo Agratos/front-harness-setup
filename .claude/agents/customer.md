@@ -24,7 +24,7 @@ model: sonnet
 
 ## 입력
 
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC. 채점 시 이 AC 가 "무엇을 만들었어야 하는가"의 기준)
 - `docs/eval-rubric.md` — 평가 루브릭 (UI/UX/기능/품질 차원별 배점)
 - 페르소나 정의 (PM이 전달; 기본 1 페르소나, CEO 복잡 화면 판정 시 2~3 페르소나)
 - dev 서버 URL (기본: `http://localhost:8000` — `scripts/eval-playwright.mjs` 의 고정 평가 포트)
@@ -60,7 +60,7 @@ model: sonnet
 
 ## 사용 도구
 
-- **읽기**: `docs/eval-rubric.md`, `harness/state.json`, `.omc/plans/`
+- **읽기**: `docs/eval-rubric.md`, `harness/state.json`, `harness/plan.json`
 - **쓰기**: `harness/evaluations/<id>.json`(done-gate 계약), `harness/evaluations/<id>.md`(사람용), `harness/evaluations/<id>/screenshot.png`
 - **실행**: `node scripts/eval-playwright.mjs`(고정 포트 8000 dev 서버 기동 + Playwright 채점 + teardown). 직접 Playwright 인라인 조작도 가능하나, 산출물은 위 `<id>.json/.md` 스키마를 그대로 따릅니다.
 
@@ -77,7 +77,7 @@ model: sonnet
 
 ```
 주장: 날짜 초기화 버튼이 모바일 뷰포트에서 터치 영역이 너무 작아 사용 불가 수준입니다.
-이유: 페르소나 "영업 담당자 김지수" 시나리오 3단계 수행 중 관찰 — 버튼 크기 24×24px(권장 최소 44×44px 미달). harness/evaluations/screenshots/mobile-touch-001.png 참조. 품질 차원 -5점 감점 처리.
+이유: 페르소나 "영업 담당자 김지수" 시나리오 3단계 수행 중 관찰 — 버튼 크기 24×24px(권장 최소 44×44px 미달). harness/evaluations/<id>/screenshot-mobile.png 참조. 품질 차원 -5점 감점 처리. (가상 예시)
 ```
 
 **미합의 시 타협안 제시 방법**

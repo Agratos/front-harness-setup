@@ -16,6 +16,18 @@ harness-setup 의 한 사이클 산출물을 **실사용 관점에서 평가** �
 5. **기록**: `<id>.json`(머신리더블, done-gate 계약 필드 `score`/`majorComplaints`) + `<id>.md`(사람용).
 6. **TEARDOWN(필수)**: 항상 `finally` 에서 dev 서버 프로세스 트리를 종료하고 포트 해제를 검증.
 
+## 캡처물 소비 — ⛔ 필수 (루브릭 숫자는 하한일 뿐)
+
+스크립트 실행으로 평가를 끝내지 않습니다. `eval-playwright.mjs` 가 `harness/evaluations/<id>/` 에 남긴
+**`screenshot.png`(데스크톱)·`screenshot-mobile.png`(375px)·`dom.html`** 을 `Read` 로 **직접 열어 보고**
+레이아웃·여백(사이드 padding)·정렬·시각 위계·반응형·빈/에러/로딩 상태를 판정한 뒤, 그 결과를
+`<id>.json` 의 `score`·`complaints` 에 반영합니다(시각/UX 결함 = minor~major, major 면 done-gate FAIL).
+
+> ⚠️ 캡처물을 보지 않고 루브릭 점수만으로 통과시키면 **평가 무효**입니다
+> (실제 사고: 사이드 padding 없는 UI 가 96점 통과). 루브릭("앱이 떴는가")은 하한이고,
+> "잘 보이는가·쓸 만한가"는 캡처물을 본 에이전트가 정합니다.
+> 상세 절차: [run-cycle.md](run-cycle.md) §evaluate · [customer.md](../agents/customer.md) §캡처물 소비.
+
 ## 실행
 
 ```bash

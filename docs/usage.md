@@ -134,7 +134,7 @@ node scripts/record-decision.mjs --phase=debate \
 - **불만 = 실패한 체크리스트 항목**. major 불만이 1건이라도 있으면 done-gate FAIL.
 - **TEARDOWN(Windows critical)**: 항상 `finally` 에서 `taskkill /F /T /PID` 로 dev 서버 프로세스 트리를 종료하고 포트 해제를 검증 → orphan 미잔존.
 - **폴백**: Playwright 미설치/브라우저 실패 시 정적 폴백(static-fallback)으로 전환하되 teardown 은 동일 수행, exit 0.
-- **Notion 미러(자동)**: `config.useMcp=true` 면 개발 중 자동 적재됩니다 — `loop.mjs` 가 페이즈마다 대시보드 진행상황(`upsertDashboard`)을, `logDecision` 이 결정 결론(`mirrorDecisionComment`)을 `harness/notion-outbox/` 에 쌓습니다. `false` 면 모두 no-op. `useMcp=true` 면 `loop`·`init-project` 가 적재 직후 **`scripts/notion-flush.mjs`(Notion REST)로 실제 Notion 에 자동 반영**합니다(`NOTION_TOKEN` 필요, best-effort — 실패 시 outbox 에 남아 재시도). 상세: [notion-dashboard.md](notion-dashboard.md).
+- **Notion 허브 갱신(⚠️ 수동 준수 — 코드 강제 없음)**: 구조를 지우던 옛 REST 미러 제거 후 `loop.mjs` 는 `upsertDashboard`·`notion-flush` 를 **호출하지 않습니다**(2차 자기진단 F22). 매 사이클 허브 갱신은 [run-cycle.md](../.claude/commands/run-cycle.md) §Notion 절차대로 **오케스트레이터가 커넥터(MCP)/REST 로 직접** 수행해야 합니다. 코드 경로로 남은 것은 `logDecision`→`mirrorDecisionComment`(결정 결론 outbox 적재, `useMcp=false` 면 no-op)와 `init-project`→`flushOutbox` 뿐이며, outbox 는 `yarn notion:flush` 로 수동 반영할 수 있습니다. 상세: [notion-dashboard.md](notion-dashboard.md) · 강제 모델 표: [AGENTS.md](../AGENTS.md).
 
 ---
 

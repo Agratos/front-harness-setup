@@ -17,7 +17,7 @@ model: sonnet
 
 ## 입력
 
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - 화면 설계/와이어프레임 또는 구현된 컴포넌트 경로 (PM이 전달)
 - `docs/eval-rubric.md` — 평가 루브릭
 - `harness/state.json` — 현재 하네스 상태
@@ -31,7 +31,7 @@ model: sonnet
 
 ## 사용 도구
 
-- **읽기**: `src/`, `docs/`, `harness/evaluations/`, `harness/state.json`, `.omc/plans/`
+- **읽기**: `src/`, `docs/`, `harness/evaluations/`, `harness/state.json`, `harness/plan.json`
 - **쓰기**: `harness/evaluations/ux-<id>.md`
 - **실행**: 없음 (실제 브라우저 조작은 customer 에이전트 담당)
 
