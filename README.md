@@ -74,9 +74,10 @@ node scripts/notion-storyboard.selftest.mjs # 스토리보드 업로드·첨부 
 node scripts/eval-scenario.selftest.mjs     # 상호작용(E2E) 러너 스텝·단언 + exit code 계약
 node scripts/plan.selftest.mjs              # 수용기준(AC) 커버리지 + 상태 대시보드
 node scripts/phase-gate.selftest.mjs        # 페이즈 산출물 계약(스탬프·코드 지문·면제)
+node scripts/record-decision.selftest.mjs   # 기록 CLI(인자 계약·스탬프 자동·claims 파싱)
 ```
 
-> CI(`.github/workflows/ci.yml`)는 게이트 4종 + 위 self-test **15종** + `demo.mjs` 를 모두 실행합니다.
+> CI(`.github/workflows/ci.yml`)는 게이트 4종 + 위 self-test **16종** + `demo.mjs` 를 모두 실행합니다.
 
 ## 구조 개요
 
@@ -110,7 +111,7 @@ harness-setup/
 │  ├─ evaluations/         # 차원별 평점 + 스크린샷
 │  └─ report.md            # 최종 보고서 (데모/실행 종료 시 채워짐)
 ├─ docs/               # FSD 규약·루브릭·상태 매니페스트·상세 사용법
-├─ .github/workflows/  # CI (게이트 4종 + 자가검증 15종 + 통합 데모)
+├─ .github/workflows/  # CI (게이트 4종 + 자가검증 16종 + 통합 데모)
 └─ src/                # FSD 웹프론트 (실재 예시 슬라이스 포함 — 사양서 확정 4)
    ├─ app/                 # providers(react-query; mantine·router 는 제품 단계 추가) + App
    ├─ pages/               # 실재 예시: home (feature 조립)
