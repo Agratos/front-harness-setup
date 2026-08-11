@@ -101,11 +101,54 @@ export async function pidsOnPort(port) {
 	return [...new Set(r.stdout.split(/\s+/).filter((s) => /^\d+$/.test(s)).map(Number))];
 }
 
-/** 포트를 점유한 listener PID 들을 트리째 종료한다(포트 기준 폴백). */
-export async function killByPort(port) {
+/**
+ * PID 의 프로세스 이미지(실행 파일) 이름을 조회한다 — 죽이기 전 신원 확인용.
+ *  - Windows: `tasklist /FI "PID eq <pid>" /FO CSV /NH` 첫 컬럼.
+ *  - POSIX: `ps -p <pid> -o comm=`.
+ * @param {number} pid
+ * @returns {Promise<string>} 소문자 이미지명(조회 실패 시 '')
+ */
+export async function processImage(pid) {
+	if (isWin) {
+		const r = await run('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']);
+		const m = r.stdout.match(/^"([^"]+)"/m);
+		return m ? m[1].toLowerCase() : '';
+	}
+	const r = await run('ps', ['-p', String(pid), '-o', 'comm=']);
+	return r.stdout.trim().toLowerCase();
+}
+
+/** 포트 폴백 kill 이 허용하는 dev 서버 이미지 — node/vite/yarn 계열만. */
+const DEV_SERVER_IMAGE = /node|vite|yarn|esbuild|npm/i;
+
+/**
+ * 포트를 점유한 listener PID 들을 트리째 종료한다(포트 기준 폴백).
+ *
+ * ⚠️ 신원 확인(최소 권한): 포트 번호만 믿고 죽이면 **우리가 띄우지 않은 무관한 프로세스**
+ * (예: 사용자가 8000 에 올려 둔 다른 서버)까지 죽인다(감사 발견 H3). 이미지명이 dev 서버
+ * 계열(node/vite/yarn)일 때만 종료하고, 그 외는 건너뛰며 사유를 돌려준다.
+ * @param {number} port
+ * @param {{allowImage?: RegExp}} [opts]
+ * @returns {Promise<{killed:number[], skipped:Array<{pid:number, image:string}>}>}
+ */
+export async function killByPort(port, { allowImage = DEV_SERVER_IMAGE } = {}) {
 	const pids = await pidsOnPort(port);
-	for (const pid of pids) await killProcessTree(pid);
-	return pids;
+	const killed = [];
+	const skipped = [];
+	for (const pid of pids) {
+		if (pid === process.pid) {
+			skipped.push({ pid, image: '(self)' });
+			continue;
+		}
+		const image = await processImage(pid);
+		if (image && allowImage.test(image)) {
+			await killProcessTree(pid);
+			killed.push(pid);
+		} else {
+			skipped.push({ pid, image: image || '(unknown)' });
+		}
+	}
+	return { killed, skipped };
 }
 
 /** ms 만큼 대기 (폴링용). */
@@ -146,9 +189,15 @@ export async function teardownDevServer({ pid, port, child, retries = 20, interv
 
 	// 폴백(A3): pid 트리 종료가 놓쳤어도 포트가 여전히 점유 중이면, 포트 기준으로 listener 를
 	// 찾아 트리째 종료한다(간헐 orphan dev 서버 방지). 종료 후 한 번 더 폴링.
+	// ⚠️ 우리가 서버를 실제로 띄웠을 때(effectivePid 존재)만 폴백을 가동한다 — spawn 자체가
+	// 실패한 경우 포트 점유자는 우리 것이 아닐 가능성이 크고, killByPort 의 이미지 필터가
+	// 한 번 더 신원을 확인한다(무관 프로세스 오인 kill 방지 — 감사 발견 H3).
 	let portKill = [];
-	if (!portFree) {
-		portKill = await killByPort(port);
+	let portSkipped = [];
+	if (!portFree && effectivePid) {
+		const byPort = await killByPort(port);
+		portKill = byPort.killed;
+		portSkipped = byPort.skipped;
 		if (portKill.length) {
 			for (let i = 0; i < retries; i++) {
 				if (!(await isPortInUse(port, 500))) {
@@ -160,5 +209,5 @@ export async function teardownDevServer({ pid, port, child, retries = 20, interv
 		}
 	}
 
-	return { killed, portFree, port, pid: effectivePid, portKill };
+	return { killed, portFree, port, pid: effectivePid, portKill, portSkipped };
 }
