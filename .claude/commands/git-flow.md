@@ -21,26 +21,30 @@ harness-setup 자율 개발 루프에서 **브랜치 생성 → step 작업 → 
 - 이미 같은 이름의 브랜치가 있으면 체크아웃만 합니다.
 - main 이 아직 시드 안됐으면 거부합니다 (먼저 `seed-main` 필요).
 
-### `merge-step <nn> <slug> [--gate-ok]` — done-gate 통과 시 병합
+### `merge-step <nn> <slug> [--vote-override] [--allow-empty]` — done-gate 통과 시 병합
 
-- `step/<nn>-<slug>` 를 `--no-ff` 로 main 에 병합합니다. **단, done-gate 를 통과해야만** 병합합니다.
+- 순서: **빈 병합 차단**(main 대비 커밋·변경 확인) → **done-gate** → (원격 있으면) step 브랜치 push → `--no-ff` 병합 → (원격 있으면) main push.
 - 게이트 실패 시 병합을 거부하고 `exit 1` + 사유를 로그로 남깁니다.
+- `--vote-override`: vote 페이즈 뒤 드라이버가 전달 — done-gate 의 **주관 임계(90/88)만 우회**하고 결정적 게이트(typecheck/lint/check-arch/test)는 그대로 강제합니다.
+- **병합 충돌 시 자동 abort**: 충돌이 나면 `merge --abort` 후 step 브랜치로 복귀하고 `exit 1` 로 실패합니다 — 반쯤 병합된 더티 main 을 남기지 않습니다. 충돌은 **step 브랜치에서 main 을 병합해 해결·커밋**한 뒤 merge-step 을 재시도하세요.
+- 원격(`origin`)이 없으면 push 는 경고만 남기고 skip 합니다(자율 유지).
 
 ## merge-gate (done-gate) 판정 규칙
 
-1. **`scripts/done-gate.mjs` 가 존재하면**: `node scripts/done-gate.mjs` 를 실행해 **exit 0** 이어야 통과.
-   (done-gate.mjs 는 US-007 에서 도입 — 그 전까지는 아래 폴백을 사용)
-2. **done-gate.mjs 가 없으면(폴백)**: 명시적 승인이 필요합니다.
-   - `--gate-ok` 플래그, 또는
-   - 환경변수 `HARNESS_GATE_OK=1`
-   - 둘 다 없으면 거부.
+1. **`scripts/done-gate.mjs` 가 존재하면(현재 기본)**: `node scripts/done-gate.mjs` 를 실행해 **exit 0** 이어야 통과.
+   이때 `--gate-ok`/`HARNESS_GATE_OK` 는 **무시**됩니다.
+2. **done-gate.mjs 가 없으면(폴백 — 스켈레톤·셀프테스트 임시 저장소 전용)**: 명시적 승인이 필요합니다.
+   - `--gate-ok` 플래그, 또는 환경변수 `HARNESS_GATE_OK=1`. 둘 다 없으면 거부.
+   - ⛔ **이 폴백은 셀프테스트/CI 전용이다. 자율 루프에서 게이트를 피하려는 용도로 쓰지 않는다** — 실제 프로젝트에는 done-gate.mjs 가 항상 존재하므로 애초에 동작하지 않는다.
 
-## 직접 main 작업 차단
+## 직접 main 작업 차단 (pre-commit 훅 — 코드 강제)
 
 - step 작업은 반드시 `start-step` → (step 브랜치에서 작업) → `merge-step` 경로를 거쳐야 합니다.
-- 가드 `assertNotDirectMainWork()` 는 **시드 이후 main 브랜치에서 직접 커밋**하려는 시도를 거부(throw)합니다.
+- **배선**: `seed-main`/`start-step` 이 `.git/hooks/pre-commit` 에 가드 훅을 설치합니다(`ensureMainGuardHook`, 멱등 — 기존 다른 훅이 있으면 덮지 않고 경고만). 시드 이후 main 에서의 직접 `git commit` 은 훅이 거부합니다.
+- 예외: merge 진행 중 커밋(merge-step 의 충돌 마무리)·`HARNESS_ALLOW_MAIN=1`(의도적 우회)·시드 전(unborn).
 - `merge-step` 이 **시드 이후 main 에 쓰기를 하는 유일한 경로**입니다.
-- `seed-main` 은 시드 전(unborn) 단계라 예외이며, 가드는 시드 이전에는 통과시킵니다.
+- `assertNotDirectMainWork()` 함수는 같은 정책의 프로그램용 가드(export)이며, 실제 강제는 위 훅이 담당합니다.
+- 검증: `node scripts/git-flow.selftest.mjs` 시나리오 [7](훅 차단·우회)·[8](충돌 abort).
 
 ## 커밋 메시지 규약 (Conventional Commits 기반)
 
@@ -88,12 +92,12 @@ node scripts/git-flow.mjs start-step 01 login
 
 #    ... step 브랜치에서 작업 + 커밋 ...
 
-# 3) done-gate 통과 시 main 으로 병합
-node scripts/git-flow.mjs merge-step 01 login --gate-ok
-# 또는
-HARNESS_GATE_OK=1 node scripts/git-flow.mjs merge-step 01 login
-# done-gate.mjs(US-007) 도입 후에는 플래그 없이 자동 판정
+# 3) done-gate 통과 시 main 으로 병합 (done-gate.mjs 가 자동 판정 — 플래그 불필요)
+node scripts/git-flow.mjs merge-step 01 login
 ```
+
+> ⛔ `--gate-ok`/`HARNESS_GATE_OK=1` 은 done-gate.mjs 가 **없는** 환경(셀프테스트 임시 저장소)의 폴백 전용이며,
+> done-gate.mjs 가 있으면 무시됩니다. **자율 루프에서 게이트 우회 목적으로 사용 금지.**
 
 ## useGit=false 우회
 
@@ -107,7 +111,3 @@ node scripts/git-flow.selftest.mjs   # 임시 git 저장소에서만 동작, PAS
 ```
 
 > selftest 는 `os.tmpdir()` 의 일회용 저장소에서만 실행되며 실제 저장소를 절대 변경하지 않습니다.
-
-## 다음 단계
-
-`merge-gate` 의 자동 판정은 `scripts/done-gate.mjs` (US-007) 도입 후 활성화됩니다.

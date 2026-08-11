@@ -14,9 +14,9 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | **UI**             | `ui.md`             | FSD features/widgets/pages `ui` 세그먼트 컴포넌트 구현        | `src/{features,widgets,pages}/*/ui/`                                    |
 | **UX**             | `ux.md`             | 사용 흐름·정보구조·인터랙션 사용성 평가 및 개선 제안          | `harness/evaluations/ux-<id>.md`                                        |
 | **QA**             | `qa.md`             | typecheck/lint/test/check-arch 실행·판정·회귀 점검            | `harness/errors/`, `harness/evaluations/qa-<id>.md`                     |
-| **Quality**        | `quality.md`        | 성능·접근성 심화 점검 + 빌드 검증·번들 분석·릴리스 노트(구 Deploy 흡수) | `harness/evaluations/quality-<id>.md`                            |
+| **Quality**        | `quality.md`        | 성능·접근성 심화 점검 + 빌드 검증·번들 분석·릴리스 노트(구 Deploy 흡수) | `harness/evaluations/quality-<id>.md`, `harness/evaluations/release-notes-<id>.md` |
 | **Customer**       | `customer.md`       | 페르소나(가변 1~3)로 dev 서버 직접 사용(Playwright), 100점 채점 | `harness/evaluations/<id>.json` + `<id>.md` (done-gate 가 `.json` 소비) |
-| **Entity Modeler** | `entity-modeler.md` | 서버 API 문서 → FSD 엔티티 DTO/타입/매퍼/스토어 생성          | `src/entities/<entity>/{dto,types,mapper,store}/`                       |
+| **Entity Modeler** | `entity-modeler.md` | 서버 API 문서 → FSD 엔티티 DTO/타입/매퍼/스토어 생성          | `src/entities/<entity>/model/{dto,types,mapper,store}/`                 |
 
 > 9역할 = UI · UX · QA · Architect(설계) · Customer(고객) · CEO · PM(코디네이터) · Quality(품질+배포) · Entity Modeler. PM 이 진행관리·중재 코디네이터를 겸하고, 투표 동률 시 CEO 가 캐스팅보트를 가집니다.
 
@@ -62,7 +62,7 @@ harness-setup 의 협의체(consensus) 구성, 오케스트레이터 중재 모�
 | 결정적 게이트 4종(typecheck/lint/arch/test)                             | **코드 강제** — `scripts/done-gate.mjs`                                                         |
 | 평가 임계치(히스테리시스/래치), 채점 산식                               | **코드 강제** — `done-gate.mjs` / `rubric.mjs`                                                  |
 | **재작업 카운트(`reworkCount`)·5회 초과 시 `vote` 분기·투표 후 진행(gateOverride)** | **코드 강제** — `scripts/loop.mjs`(`computeTransition`) + `done-gate.mjs --vote-override` |
-| 브랜치 보호(직푸시 차단), merge 게이트                                  | **코드 강제** — `scripts/git-flow.mjs`                                                          |
+| 브랜치 보호(main 직접 커밋 차단), merge 게이트                          | **코드 강제** — `git-flow.mjs`. `seed-main`/`start-step` 이 `.git/hooks/pre-commit` 훅 설치(`ensureMainGuardHook`) — 시드 이후 main 직접 커밋을 훅이 거부(우회 `HARNESS_ALLOW_MAIN=1`). 예전엔 `assertNotDirectMainWork` 가 export 만 되고 호출자가 없는 죽은 가드였다(감사 발견) |
 | **빈 병합 차단**(커밋 없이 merge 로 오면 거부)                          | **코드 강제** — `git-flow.mjs` `branchHasWork` (커밋 수 + main 대비 diff). 우회는 `--allow-empty` |
 | **평가 신선도**(사이클 단위 — 이전 재작업 회차 평가 재사용 차단)        | **코드 강제** — `done-gate.mjs` freshness + `state.mjs` `cycleIdOf`                             |
 | **게이트 실측 반영**(루브릭 `q.gates-green` 이 실제 게이트 결과를 읽음) | **코드 강제** — `done-gate.mjs` → `harness/gate-status.json` → `eval-playwright.mjs`            |

@@ -16,7 +16,10 @@
 - **state 없음 / status=`init`** → 신규. 그대로 1단계로 진행(갓 복사한 새 프로젝트의 정상 경로 — 지울 것도 없음).
 - **state 있고 진행 이력 있음**(status `running`/`done` 등):
   - **기본(옵션 없음) = 이어서**: 초기화·인터뷰·시드를 건너뛰고 현재 state 로 `/run-cycle` 을 이어서 진행.
-  - **`--fresh` 지정 = 새로 시작**: 런 상태만 초기화(`state.json` 삭제 + `evaluations`·`decisions`·`errors` 비움 + `cycle-log` 비움; **`.env`·정체성·`config` 연동설정 보존**) → 그다음 1·2(deep-interview)·3단계 정상 진행.
+  - **`--fresh` 지정 = 새로 시작**: 런 상태만 초기화 → 그다음 1·2(deep-interview)·3단계 정상 진행.
+    - ⚠️ **전용 스크립트가 없다 — 오케스트레이터가 아래 목록을 직접 지운다** (`--fresh` 를 받는 스크립트는 존재하지 않음). **`yarn reset`(reset-project.mjs)을 쓰지 말 것** — 그것은 복사 직후 수준의 전체 초기화라 보존해야 할 `harness/config.json` 까지 삭제한다.
+    - **지운다**: `harness/state.json` · `harness/gate-status.json` · `harness/evaluations/*` · `harness/decisions/*` · `harness/errors/*` · `harness/cycles/cycle-log.ndjson`(비움).
+    - **보존한다**: `.env` · 프로젝트 정체성(package.json 등) · `harness/config.json`(연동설정) · `src/` 코드.
 
 > 이전에 제거했던 `start 0번(--fresh)` 을 **fresh/resume 분기**로 되살린 형태다. 단 **기본은 resume**(안 지움)이고, 지우는 건 **`--fresh` 로 명시할 때만**. deep-interview(2단계)는 **신규/`--fresh` 경로에서만 무조건** 수행하고, **이어서(resume)는 이미 계획이 확정돼 인터뷰 없이** 계속한다.
 
@@ -147,6 +150,6 @@ node scripts/status.mjs
 
 ## 비고
 
-- 정리가 필요한 특수 상황(복사 없이 제자리에서 다시 시작)에는 `yarn reset --apply` 를 직접 쓸 수 있습니다. 일반 흐름은 `/copy-project` 로 복사해 오는 것을 전제합니다.
+- 정리가 필요한 특수 상황(복사 없이 제자리에서 다시 시작)에는 `yarn reset --apply` 를 직접 쓸 수 있습니다. 일반 흐름은 `/copy-project` 로 복사해 오는 것을 전제합니다. ⚠️ `yarn reset` 은 **`harness/config.json` 포함 전체 초기화**라 연동설정이 지워집니다 — 실행 후 `init-project` 부터 다시 수행해야 합니다(§0 의 `--fresh` 부분 초기화와 다름).
 - **deep-interview 는 무조건 수행한다.** 전역 just-execute(되묻지 말고 즉시 실행) 규칙으로도 이 인터뷰는 **건너뛰지 않으며**, planSteps 는 인터뷰 결과로 확정한다(자동 기본 계획 시드 금지).
 - 유일한 예외는 **완전 비대화형(CI/headless, TTY 없음)** — 질문이 물리적으로 불가능한 환경에서만 planSteps 를 `--init` 인자로, 연동값을 인자/환경변수로 주입한다.

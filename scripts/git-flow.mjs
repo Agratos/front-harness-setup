@@ -9,8 +9,10 @@
 // 직접 푸시 차단: step 작업은 반드시 start-step/merge-step 경로를 통해야 하며,
 //   seed-main 외에는 main 에서 직접 커밋하는 것을 assertNotDirectMainWork() 로 거부합니다.
 //   merge-step 이 seed 이후 main 에 쓰기를 하는 유일한 경로입니다.
+//   배선: seed-main/start-step 이 .git/hooks/pre-commit 에 동일 정책의 훅을 설치한다
+//   (ensureMainGuardHook — 함수만 export 하고 아무도 안 부르던 죽은 가드를 실제 강제로 승격).
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -132,6 +134,55 @@ export function assertNotDirectMainWork(action = 'commit') {
 	}
 }
 
+const MAIN_GUARD_MARKER = 'harness-main-guard';
+
+/**
+ * assertNotDirectMainWork 의 **훅 배선** — .git/hooks/pre-commit 에 main 직접 커밋 차단 훅을 설치한다.
+ *
+ * 왜 필요한가: 가드 함수는 export 만 되어 있고 어떤 런타임 경로도 호출하지 않아 **죽은 방어선**이었다
+ * (md 3곳은 "코드 강제"로 광고 — 실측 감사에서 발견). git 커밋은 이 스크립트를 거치지 않으므로
+ * 실제 차단 지점은 git 훅뿐이다.
+ *
+ * 동작 (훅 스크립트):
+ * - seed 이후 main 에서의 직접 `git commit` 을 거부한다.
+ * - merge 진행 중(MERGE_HEAD 존재 — merge-step 의 충돌 마무리 커밋)은 허용.
+ *   (`git merge --no-ff` 의 자동 병합 커밋은 pre-commit 을 타지 않으므로 merge-step 정상 경로는 영향 없음)
+ * - 의도적 우회: `HARNESS_ALLOW_MAIN=1`.
+ * - 멱등: 우리 마커가 있으면 재설치하지 않는다. **다른 훅(husky 등)이 이미 있으면 덮지 않고 경고만** 남긴다.
+ */
+export function ensureMainGuardHook() {
+	if (shouldSkipGitFlow()) return;
+	const gitDir = gitSafe(['rev-parse', '--git-dir']);
+	if (!gitDir.ok || !gitDir.out) return;
+	const hookPath = path.resolve(repoRoot, gitDir.out, 'hooks', 'pre-commit');
+	if (existsSync(hookPath)) {
+		const existing = readFileSync(hookPath, 'utf8');
+		if (existing.includes(MAIN_GUARD_MARKER)) return; // 이미 설치됨 (멱등)
+		log(`경고: 기존 pre-commit 훅이 있어 main 가드 훅을 설치하지 않았습니다 (${hookPath})`);
+		return;
+	}
+	const script = [
+		'#!/bin/sh',
+		`# ${MAIN_GUARD_MARKER} — 직접 main 커밋 차단 (git-flow.mjs 가 설치, assertNotDirectMainWork 의 훅 배선)`,
+		'[ "$HARNESS_ALLOW_MAIN" = "1" ] && exit 0',
+		'branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)',
+		'if [ "$branch" = "main" ] && git rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1; then',
+		'  if [ -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then exit 0; fi',
+		'  echo "[git-flow] 직접 main 커밋 거부: start-step 으로 step 브랜치를 만들고 merge-step 으로 병합하세요. (의도적 우회: HARNESS_ALLOW_MAIN=1)" >&2',
+		'  exit 1',
+		'fi',
+		'exit 0',
+		'',
+	].join('\n');
+	writeFileSync(hookPath, script, 'utf8');
+	try {
+		chmodSync(hookPath, 0o755);
+	} catch {
+		/* Windows: chmod 불필요 */
+	}
+	log('main 가드 훅 설치: .git/hooks/pre-commit (직접 main 커밋 차단)');
+}
+
 /** seed-main: 조건부 초기 시드 커밋 */
 function cmdSeedMain() {
 	if (shouldSkipGitFlow()) {
@@ -140,6 +191,7 @@ function cmdSeedMain() {
 	}
 	if (mainHasCommits()) {
 		log('seed skipped (main already seeded)');
+		ensureMainGuardHook();
 		// 빈 원격이면 main 을 먼저 push 해 GitHub default 브랜치가 main 이 되게 한다.
 		// (step 브랜치가 main 보다 먼저 push 되면 그게 default 로 잡힘 — 실제 테스트에서 발생.)
 		pushIfRemote('main');
@@ -158,6 +210,7 @@ function cmdSeedMain() {
 	const allowEmpty = staged.ok ? ['--allow-empty'] : [];
 	git(['commit', ...allowEmpty, '-m', 'chore: harness 계획 시드']);
 	log(`seed-main 완료: main 초기 시드 커밋 생성 (총 ${mainCommitCount()}개 커밋)`);
+	ensureMainGuardHook();
 	// 빈 원격이면 main 을 먼저 push 해 default 브랜치를 main 으로 (step 브랜치 우선 push 방지).
 	pushIfRemote('main');
 	return 0;
@@ -179,6 +232,7 @@ function cmdStartStep(nn, slug) {
 		fail('start-step 거부: main 이 아직 시드되지 않았습니다. 먼저 seed-main 을 실행하세요.');
 	}
 	const branch = stepBranchName(nn, slug);
+	ensureMainGuardHook();
 	if (branchExists(branch)) {
 		// 이미 있으면 체크아웃만
 		git(['checkout', branch]);
@@ -287,8 +341,27 @@ function cmdMergeStep(nn, slug, extraArgs) {
 	pushIfRemote(branch);
 
 	// merge-step 이 seed 이후 main 에 쓰기를 하는 유일한 경로.
-	git(['checkout', 'main']);
-	git(['merge', '--no-ff', branch, '-m', `merge: ${branch} → main`]);
+	const co = gitSafe(['checkout', 'main']);
+	if (!co.ok) {
+		fail(
+			`merge-step 거부: main 체크아웃 실패 — 작업트리에 미커밋 변경이 있는지 확인하고 ` +
+				`step 브랜치에 커밋/정리한 뒤 다시 시도하세요. (exit ${co.code})`,
+			1,
+		);
+	}
+	const merged = gitSafe(['merge', '--no-ff', branch, '-m', `merge: ${branch} → main`]);
+	if (!merged.ok) {
+		// 충돌 등 병합 실패 — 반쯤 병합된 상태(더티 main)를 절대 남기지 않는다.
+		// 다음 루프가 충돌 마커 위에서 돌면 게이트·평가가 전부 오염되기 때문.
+		const abort = gitSafe(['merge', '--abort']);
+		gitSafe(['checkout', branch]);
+		fail(
+			`merge-step 실패: '${branch}' → main 병합 중 오류(충돌 가능, exit ${merged.code}). ` +
+				`merge --abort ${abort.ok ? '수행' : '해당 없음'} 후 '${branch}' 로 복귀했습니다. ` +
+				`step 브랜치에서 main 을 병합해 충돌을 해결·커밋한 뒤 merge-step 을 재시도하세요.`,
+			1,
+		);
+	}
 	log(`merge-step 완료: '${branch}' → main 병합 (총 ${mainCommitCount()}개 커밋)`);
 
 	// 병합된 main 을 원격에 push (origin 있을 때만).

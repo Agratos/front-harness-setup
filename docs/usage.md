@@ -29,7 +29,7 @@
 | --------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `init-project.mjs`       | git 존재 확인 + (필요 시) `git init -b main` + `harness/config.json` 기록     | `--use-git[=bool]`, `--use-mcp[=bool]` / 환경변수 `HARNESS_USE_GIT`, `HARNESS_USE_MCP`        |
 | `loop.mjs`            | 재호출 드라이버 (1 호출 = 1 페이즈)                                           | `--init "<s1>,<s2>"` (planSteps 시드, init 상태에서만)                                        |
-| `git-flow.mjs`        | `seed-main` / `start-step <nn> <slug>` / `merge-step <nn> <slug> [--gate-ok]` | `skipGitFlow=true` 면 전 명령 no-op                                                           |
+| `git-flow.mjs`        | `seed-main` / `start-step <nn> <slug>` / `merge-step <nn> <slug> [--vote-override] [--allow-empty]` | `skipGitFlow=true` 면 전 명령 no-op. `--gate-ok`/`HARNESS_GATE_OK` 는 done-gate.mjs 부재 시 폴백(셀프테스트 전용) |
 | `done-gate.mjs`       | 완료 게이트 (결정적 4종 + 평가 임계치)                                        | `--deterministic-only`, `--json`, `--score=N`, `--major-complaints=N`, `--skip-deterministic` |
 | `eval-playwright.mjs` | 고객 평가 + 루브릭 채점 + teardown                                            | `--port=N`(기본 8000), `--id=ID`, `--score=N`, `--major-complaints=N`, `--no-server`          |
 | `check-arch.js`       | FSD 레이어 경계 검사                                                          | `--json`, `--files <dir>`                                                                     |

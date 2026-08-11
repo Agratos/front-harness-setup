@@ -34,6 +34,7 @@ model: sonnet
 
 - 채점 결과 (`harness/evaluations/<id>.json` + `harness/evaluations/<id>.md`):
   - `<id>.json` — **머신리더블, done-gate 계약**. 계약 필드 `score`(가중 평균 종합)·`majorComplaints`(major 불만 수)를 포함합니다. done-gate 는 이 `.json` 만 읽습니다(`scripts/done-gate.mjs`).
+  - ⛔ **새 `.json` 파일을 만들지 말 것** — `eval-playwright.mjs` 가 생성한 기존 `eval-NNNN.json` 을 **편집**해 점수·불만을 조정한다. done-gate 는 파일명이 `eval-*.json` 이고 안의 `cycleId` 스탬프가 현재 사이클과 일치할 때만 인정한다(불일치 = stale 거부). 직접 새로 만들면 cycleId 가 없어 **채점하고도 게이트에서 탈락**한다. 편집 시 `cycleId` 필드는 절대 지우거나 바꾸지 않는다.
   - `<id>.md` — 사람용 요약: 페르소나별 시나리오 수행 기록, 차원별 점수, 불만 목록, 스크린샷 경로.
   - 차원별 점수: UI(가중치 0.25)·UX(0.20)·기능(0.35)·품질(0.20). 각 차원은 0~100 이며 종합 = 가중 평균(`docs/eval-rubric.md §3`).
   - 불만 목록: 심각도(major/minor) + 재현 단계. **major 1건이라도 있으면 done-gate FAIL**.
