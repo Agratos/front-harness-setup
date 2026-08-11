@@ -599,6 +599,93 @@ try {
 	}
 }
 
+// ── 시나리오 H: 페이즈 산출물 계약 — 에이전트 페이즈가 증거 없이 전진하지 못한다 (v3 2단계 / F1) ──
+//
+// 왜 통합으로 보나: `run-cycle.md` 의 "⛔ 에이전트 페이즈를 no-op 로 건너뛰지 않는다" 는 오랫동안
+// 검사자가 없는 문장이었다. 순수 함수 테스트(phase-gate.selftest)는 판정만 보고 **배선**은 못 본다 —
+// F21(멱등 재개)이 정확히 그렇게 초록인 채 죽어 있었다. 그래서 실제로 loop 를 호출해 **결과**를 본다.
+console.log('');
+console.log('=== loop selftest H: 페이즈 산출물 계약 ===');
+const tmpH = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-contract-'));
+try {
+	mkdirSync(path.join(tmpH, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpH, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpH, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }, null, 2) + '\n',
+		'utf8',
+	);
+	// 계약을 **활성**으로 만드는 환경 조건: 기록 도구가 저장소에 있다는 표시.
+	// (실행은 실제 스크립트를 절대경로로 호출한다 — 임시 cwd 에는 lib/ 가 없으므로 복사본은 동작하지 않는다)
+	writeFileSync(path.join(tmpH, 'scripts', 'record-decision.mjs'), '// fixture: 기록 도구 존재 표시\n', 'utf8');
+	writeFileSync(path.join(tmpH, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+	writeFileSync(path.join(tmpH, 'scripts', 'eval-scenario.mjs'), 'process.exit(0);\n', 'utf8');
+
+	const recorder = path.join(scriptsDir, 'record-decision.mjs');
+	const record = (phase, extra = []) =>
+		execFileSync('node', [recorder, `--phase=${phase}`, '--topic=t', '--conclusion=c', '--why=w', ...extra], {
+			cwd: tmpH,
+			encoding: 'utf8',
+			stdio: 'pipe',
+		});
+
+	invokeLoop(tmpH, ['--init', '01-contract']);
+
+	// (H-1) decompose — 기록이 없으면 전진하지 않는다 (예전엔 무조건 전진했다)
+	const h1 = invokeLoop(tmpH);
+	let stH = readState(stateFilePath(tmpH));
+	check('H: 결정 기록 없음 → decompose 에서 전진하지 않음', stH.phase === 'decompose');
+	check('H: 산출물결함으로 분류', /산출물결함/.test(h1.stdout));
+	check('H: 실패 카운터 증가', (stH.failures?.decompose ?? 0) >= 1);
+	check('H: 조치 명령(record-decision)을 안내', /record-decision\.mjs --phase=decompose/.test(h1.stdout));
+
+	// (H-2) 기록을 남기면 전진한다 — 기록 도구가 사이클 스탬프를 자동으로 찍는다
+	record('decompose');
+	invokeLoop(tmpH);
+	stH = readState(stateFilePath(tmpH));
+	check('H: 기록을 남기면 design 으로 전진', stH.phase === 'design');
+
+	// (H-3) design — 스펙·AC 부재는 verify 가 아니라 **design 에서** 막힌다 (implement 낭비 제거)
+	const h3 = invokeLoop(tmpH);
+	stH = readState(stateFilePath(tmpH));
+	check('H: 스펙 없음 → design 에서 차단', stH.phase === 'design');
+	check('H: verify 와 동일한 설계결함 분류', /설계결함/.test(h3.stdout));
+
+	// (H-4) 스펙·AC 를 채우면 남는 요구는 설계 결정 기록뿐이다
+	writeFileSync(
+		path.join(tmpH, 'harness', 'plan.json'),
+		JSON.stringify({ steps: [{ label: '01-contract', acceptance: [{ id: 'AC-1', text: '보인다' }] }] }, null, 2),
+		'utf8',
+	);
+	writeFileSync(
+		path.join(tmpH, 'harness', 'eval-scenario.json'),
+		JSON.stringify({ scenarios: [{ name: 's', ac: 'AC-1', steps: [{ assert: 'textVisible', text: 'x' }] }] }, null, 2),
+		'utf8',
+	);
+	const h4 = invokeLoop(tmpH);
+	stH = readState(stateFilePath(tmpH));
+	check('H: 스펙은 충족했지만 설계 기록이 없으면 여전히 차단', stH.phase === 'design' && /산출물결함/.test(h4.stdout));
+
+	record('design');
+	invokeLoop(tmpH);
+	stH = readState(stateFilePath(tmpH));
+	check('H: 설계 기록까지 남기면 implement 로 전진', stH.phase === 'implement');
+
+	// (H-5) implement — git 이 없는 환경에서는 코드 검사를 **생략**한다(환경 부재는 skip)
+	const h5 = invokeLoop(tmpH);
+	stH = readState(stateFilePath(tmpH));
+	check('H: git 없는 환경에서는 코드 검사 생략 → 전진', stH.phase === 'verify');
+	check('H: 생략 사유를 로그에 남긴다', /코드 변경 검사 생략/.test(h5.stdout));
+} catch (err) {
+	failures.push(`H 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpH, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
 console.log('');
 if (failures.length === 0) {
 	console.log('LOOP SELFTEST: PASS');

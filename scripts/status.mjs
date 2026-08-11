@@ -19,6 +19,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { cycleIdOf, readState, stateFilePath } from './lib/state.mjs';
+import { checkPhaseContract, PHASE_CONTRACT } from './lib/phase-gate.mjs';
 import { acceptanceOf, checkAcCoverage, findStep, readPlan } from './lib/plan.mjs';
 
 /** 페이즈 순서 — 진행 막대를 그리기 위해 loop 와 동일하게 유지한다. */
@@ -127,6 +128,15 @@ export function nextAction(ctx) {
 			why: `수용기준 ${ac.missing.length}개가 어떤 단언으로도 검증되지 않습니다 — verify 가 게이트 실행 전에 차단합니다`,
 		};
 	}
+	// 페이즈 산출물 계약이 미충족이면 loop 를 불러도 차단만 된다 → 그 자리를 메우는 명령을 먼저 준다.
+	// (계약이 없던 시절에는 에이전트 페이즈에서 항상 "/run-cycle" 만 안내했고, 산출물을 남기지 않아도
+	//  전진했기 때문에 "무엇이 빠졌는지" 를 물을 대상 자체가 없었다.)
+	if (ctx.contract && ctx.contract.ok === false) {
+		return {
+			action: ctx.contract.hint ?? '/run-cycle  (산출물 생성 후 node scripts/loop.mjs)',
+			why: `'${state.phase}' 산출물 계약 미충족 — ${ctx.contract.reason}`,
+		};
+	}
 	const isAgentPhase = ['decompose', 'design', 'implement', 'evaluate', 'debate', 'vote'].includes(state.phase);
 	if (isAgentPhase) {
 		// 에이전트 페이즈에서는 AC 공백을 "이유" 로 함께 알려준다(행동은 여전히 /run-cycle).
@@ -184,7 +194,17 @@ export function collect(repoRoot) {
 		};
 	}
 
-	const ctx = { state, gate, gateFresh, evaluation, evalFresh, scenario, cycleId, ac };
+	// 페이즈 산출물 계약 — 지금 이 자리를 떠나려면 무엇이 있어야 하는가 (읽기 전용 판정).
+	let contract = null;
+	if (state && state.status === 'running' && PHASE_CONTRACT[state.phase]) {
+		try {
+			contract = { phase: state.phase, ...checkPhaseContract({ repoRoot, state, phase: state.phase }) };
+		} catch {
+			contract = null; // 계약 판정 실패가 대시보드를 죽이지 않는다
+		}
+	}
+
+	const ctx = { state, gate, gateFresh, evaluation, evalFresh, scenario, cycleId, ac, contract };
 	return { ...ctx, next: nextAction(ctx) };
 }
 
@@ -288,6 +308,14 @@ function printHuman(s) {
 			'평가',
 			`${mark(pass)} ${s.evaluation.id}: 종합 ${s.evaluation.score}/100, major ${s.evaluation.majorComplaints}건 (mode=${s.evaluation.mode})`,
 		);
+	}
+
+	// 페이즈 산출물 계약 — "이 자리를 떠나려면 무엇이 있어야 하나"
+	if (s.contract) {
+		const c = s.contract;
+		if (c.skipped) line('산출물 계약', `— ${c.reason}`);
+		else if (c.ok) line('산출물 계약', `✅ ${PHASE_CONTRACT[c.phase]?.what ?? c.kind} — ${c.reason}`);
+		else line('산출물 계약', `❌ ${c.reason}`);
 	}
 
 	// 수용기준 — "만들려던 것이 만들어지고 있나"

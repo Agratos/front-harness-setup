@@ -7,6 +7,33 @@
 
 ## 현재 상태
 
+### 🟢 완료 — v3 2단계: **페이즈 산출물 계약** (F1 — 개별 배선의 일반화)
+
+- **브랜치**: `step/30-phase-artifact-gate` → main
+- **무엇을 닫았나**: 1.5단계는 `verify`(E2E)·`evaluate`(평가 산출물) **두 칸**을 개별 배선으로 막았다.
+  남은 네 칸(`decompose`·`design`·`implement`·`debate`/`vote`)은 `PHASE <name> requires agent work` 로그만
+  찍고 **증거 없이 무조건 전진**했다 — 오케스트레이터가 페이즈를 통째로 건너뛰어도 하네스는 몰랐다.
+- **핵심 변화 (실측 대조)**
+
+  | 페이즈 | 이전 | 이후 |
+  | --- | --- | --- |
+  | `decompose` | 무조건 전진 | 이번 사이클 스탬프 찍힌 결정 기록 필요 → 없으면 **산출물결함** 차단 |
+  | `design` | 무조건 전진 (스펙·AC 는 verify 에서 뒤늦게) | ①스펙·AC 계약 ②설계 기록 — **implement 를 낭비하기 전에** 차단 |
+  | `implement` | 무조건 전진 | 진입 시점 대비 **코드 지문 변화** 필요(harness/·docs/ 제외). 면제는 기록으로 명시 |
+  | `debate`/`vote` | 무조건 전진 | 이번 사이클 결정 기록 필요 |
+  | 빈 재작업 라운드 | 이전 회차 산출물로 통과 가능 | `cycleId` 에 `reworkCount` 포함 → **새 토론·새 코드 없으면 차단** |
+
+- **새 파일**: `scripts/lib/phase-gate.mjs`(계약 선언·판정) · `scripts/lib/artifact.mjs`(스탬프 형식 단일 정의 —
+  쓰는 쪽 `logDecision` 과 읽는 쪽이 공유) · `scripts/record-decision.mjs`(기록 CLI — 사이클 스탬프 자동,
+  이 파일의 존재가 계약의 **환경 조건**) · `scripts/phase-gate.selftest.mjs`
+- **fail-open 규칙 유지**: skip 은 환경 부재(기록 도구 없음 / git 없음)에만. 산출물 부재는 전부 실패.
+- **검증**: 셀프테스트 **15종 PASS**(신규 49개 체크 — phase-gate 38 + loop 시나리오 H 11)
+  · 게이트 4종 green(typecheck 0 / lint 0 / check-arch 0위반 / test 5) · DEMO PASS
+  · `/status` 에 `산출물 계약` 줄 + 미충족 시 **다음 1개 행동이 record-decision 명령으로 바뀜** 실측
+- **다음 1개 행동**: 시행 5(방어 실험 E-1~E-5 + 계약 실험)를 실제 앱·브라우저로 실행 →
+  스텁 검증이 현장에서도 성립하는지 확인. 그 후 4순위(`verdict.json` — AC 를 루브릭 최대 가중 차원으로).
+- **마지막 갱신**: 2026-08-11 (기록자: 페이즈 산출물 계약 세션)
+
 ### 🟢 완료 — v3 1.5단계: 2차 자기진단(F15~F26) **반영 완료** (12건 중 11건)
 
 - **브랜치**: `step/27-fail-open-reversal` → main

@@ -83,6 +83,7 @@ function makeCheckpointToken(phaseSeq, phase, counter) {
  *   blockedReason: string|null,
  *   blockedAt: string|null,
  *   lastExecutedPhaseSeq: number|null,
+ *   phaseEntryCode: string|null,
  *   gateOverride: boolean,
  *   status: 'init'|'running'|'blocked'|'done'
  * }}
@@ -115,6 +116,10 @@ export function defaultState(planSteps = []) {
 		// **실행에 착수한** phaseSeq. loop 가 페이즈를 돌리기 직전에 기록한다.
 		// 전진(advancePhase)이 남지 않은 채 이 값이 현재 phaseSeq 와 같으면 = 실행 중 크래시.
 		lastExecutedPhaseSeq: null,
+		// 현재 페이즈에 **진입한 시점의 코드 지문**(harness/·docs/ 제외한 git 상태).
+		// implement 산출물 계약이 "이 페이즈에서 코드가 실제로 달라졌는가" 를 판정하는 기준선이다.
+		// git 을 쓸 수 없으면 null → 해당 검사는 환경 부재로 생략된다. 상세: lib/phase-gate.mjs
+		phaseEntryCode: null,
 		// 투표 오버라이드: 5회 재작업 후 에이전트 투표가 "주관 임계(90점) 대체"를 의결하면
 		// true 가 되어 다음 merge 의 done-gate 가 결정적 게이트만 강제(주관 임계 우회)하게 한다.
 		// 새 step 으로 넘어가면 false 로 초기화된다 (step 마다 독립).

@@ -12,6 +12,7 @@
 import { appendFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { artifactMarker } from './artifact.mjs';
 import { mirrorDecisionComment } from './notion.mjs';
 
 /**
@@ -155,10 +156,15 @@ export function logCycle(repoRoot, { step, phase, note, phaseSeq, checkpointToke
  *   why?: string,                                    // 결론 근거(why)
  *   impact?: string,                                 // 영향 범위
  *   linkedStep?: string,                             // 연결 단계(step 라벨/id)
+ *   cycleId?: string,                                // (선택) 이번 사이클 `step-<idx>#<rework>`
+ *   phase?: string,                                  // (선택) 이 기록이 마감하는 페이즈
  * }} entry
  * @returns {string} 생성된 파일의 절대경로
  */
-export function logDecision(repoRoot, { topic, raisedBy, claims, rebuttals, compromise, conclusion, why, impact, linkedStep } = {}) {
+export function logDecision(
+	repoRoot,
+	{ topic, raisedBy, claims, rebuttals, compromise, conclusion, why, impact, linkedStep, cycleId, phase } = {},
+) {
 	const dir = path.join(repoRoot, 'harness', 'decisions');
 	mkdirSync(dir, { recursive: true });
 
@@ -204,11 +210,17 @@ export function logDecision(repoRoot, { topic, raisedBy, claims, rebuttals, comp
 		? rebuttalsArr.map((r) => `- ${oneLine(String(r))}`).join('\n')
 		: '- (충돌 없음 — 반박 라운드 미발생)';
 
+	// 페이즈 산출물 스탬프 — 드라이버(loop.mjs)가 "이번 사이클의 이 페이즈 기록이 있는가" 를 이 마커로 확인한다.
+	// HTML 주석이라 렌더링에는 보이지 않고, 파싱은 includes 한 번으로 끝난다(표 행 파싱보다 어긋날 여지가 없다).
+	// cycleId·phase 를 주지 않으면 마커 없이 기록된다 → 페이즈 계약 증거로는 인정되지 않는다.
+	const stamped = typeof cycleId === 'string' && cycleId && typeof phase === 'string' && phase;
 	const content = [
+		...(stamped ? [artifactMarker(cycleId, phase), ``] : []),
 		`# 협의 결정 로그 — ${id}`,
 		``,
 		`| 키 | 값 |`,
 		`| --- | --- |`,
+		...(stamped ? [`| 사이클 | ${oneLine(cycleId)} |`, `| 페이즈 | ${oneLine(phase)} |`] : []),
 		`| 안건 | ${oneLine(topicVal)} |`,
 		`| 제기자 | ${oneLine(raisedByVal)} |`,
 		`| 타협 | ${oneLine(compromiseVal)} |`,
