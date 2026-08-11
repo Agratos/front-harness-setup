@@ -74,9 +74,11 @@ export function integrityOf(evalObj) {
 
 /**
  * 평가에 유효한 격리 리뷰가 있는지 검증 — done-gate 가 병합 판정에서 호출한다.
+ * @param {{probeTool?: () => boolean}} [opts] probeTool: 리뷰 도구 가용성 프로브(셀프테스트 주입용).
+ *   미지정 시 실제 프로브(HARNESS_REVIEW_CMD 유무 + claude CLI)를 쓴다.
  * @returns {{ok:boolean, mode:string|null, reason:string}}
  */
-export function verifyEvalReview(repoRoot, id) {
+export function verifyEvalReview(repoRoot, id, opts = {}) {
 	const p = evalJsonPath(repoRoot, id);
 	let evalObj;
 	try {
@@ -85,12 +87,28 @@ export function verifyEvalReview(repoRoot, id) {
 		return { ok: false, mode: null, reason: `평가 파일을 읽을 수 없음 — ${path.relative(repoRoot, p)}` };
 	}
 	// --score 주입 평가는 이미 노출된 CI 전용 bypass — 이중 요구를 얹지 않는다(사양 §4.3).
-	if (evalObj.injected === true) return { ok: true, mode: 'injected-bypass', reason: '주입 평가(injected) — 리뷰 요구 제외(bypass 표시는 평가에 있음)' };
+	// 단, 리뷰 스탬프가 **이미 있는** 평가의 injected 플래그는 주입이 아니라 후행 편집(변조 시도)이다 —
+	// 정상 주입 평가는 리뷰 자체가 no-op 이라 스탬프가 생기지 않으므로, 둘의 공존은 위조 신호다.
+	// 그 경우 bypass 를 적용하지 않고 아래 무결성 검증을 그대로 받게 한다(감사 발견: injected 한 줄 우회).
+	if (evalObj.injected === true && !evalObj.review) {
+		return { ok: true, mode: 'injected-bypass', reason: '주입 평가(injected) — 리뷰 요구 제외(bypass 표시는 평가에 있음)' };
+	}
 	const review = evalObj.review;
 	if (!review || typeof review !== 'object') {
 		return { ok: false, mode: null, reason: '격리 리뷰 스탬프 없음 — node scripts/eval-review.mjs 를 실행하세요' };
 	}
 	if (review.mode === 'skipped-no-tool') {
+		// skip 스탬프는 "환경 부재"의 **기록**이다. 검증 시점에 리뷰 도구가 가용하다면 이 스탬프는
+		// 위조이거나 낡은 것이고, 어느 쪽이든 지금 리뷰를 실행할 수 있으므로 통과시키지 않는다
+		// (감사 발견: 손으로 쓴 skip 스탬프가 무검증 통과 — 스탬프 발급자 규칙이 관례에 불과했다).
+		const probe = opts.probeTool ?? defaultReviewToolProbe;
+		if (probe()) {
+			return {
+				ok: false,
+				mode: review.mode,
+				reason: 'skip 스탬프 무효 — 리뷰 도구가 가용합니다. node scripts/eval-review.mjs 를 실행하세요(skip 은 환경 부재에만 허용)',
+			};
+		}
 		return { ok: true, mode: review.mode, reason: '격리 리뷰 생략(claude CLI 없음 — 환경 부재, 기록됨)' };
 	}
 	if (review.integrity !== integrityOf(evalObj)) {
@@ -276,14 +294,25 @@ export function buildPrompt(repoRoot, id, evalObj) {
 	].join('\n');
 }
 
-/** claude CLI 가용성 프로브 — 환경 부재(skipped-no-tool) 판정에만 쓴다. */
+/** claude CLI 가용성 프로브 — 환경 부재(skipped-no-tool) 판정에만 쓴다. 프로세스당 1회 캐시(스폰 비용). */
+let claudeAvailableCache = null;
 export function claudeAvailable() {
+	if (claudeAvailableCache !== null) return claudeAvailableCache;
 	try {
 		const r = spawnSync('claude --version', { shell: true, encoding: 'utf8', timeout: 30_000 });
-		return r.status === 0;
+		claudeAvailableCache = r.status === 0;
 	} catch {
-		return false;
+		claudeAvailableCache = false;
 	}
+	return claudeAvailableCache;
+}
+
+/**
+ * 리뷰 도구 가용성의 기본 프로브 — skip 스탬프 검증(verifyEvalReview)이 쓴다.
+ * HARNESS_REVIEW_CMD 가 설정돼 있으면 커스텀 리뷰어가 "가용한 도구"다(셀프테스트 포함).
+ */
+function defaultReviewToolProbe() {
+	return Boolean(process.env.HARNESS_REVIEW_CMD) || claudeAvailable();
 }
 
 /**

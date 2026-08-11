@@ -215,12 +215,29 @@ try {
 	}
 	const e8 = readEval(tmpB, 'eval-0005');
 	check('[B8] claude 부재 → exit 0 + skipped-no-tool 스탬프', b8.code === 0 && e8.review?.mode === 'skipped-no-tool', b8.out.slice(-300));
-	check('[B8] verifyEvalReview 가 기록된 환경 부재를 인정', verifyEvalReview(tmpB, 'eval-0005').ok === true);
+	// skip 스탬프는 검증 시점의 도구 가용성과 대조된다 — 도구가 없을 때만 인정, 있으면 위조/낡은 skip.
+	check(
+		'[B8] verifyEvalReview 가 기록된 환경 부재를 인정(도구 부재)',
+		verifyEvalReview(tmpB, 'eval-0005', { probeTool: () => false }).ok === true,
+	);
+	const vSkipForged = verifyEvalReview(tmpB, 'eval-0005', { probeTool: () => true });
+	check(
+		'[B8] 리뷰 도구 가용인데 skip 스탬프 → 무효(수기 skip 위조 차단)',
+		vSkipForged.ok === false && /skip 스탬프 무효/.test(vSkipForged.reason),
+		vSkipForged.reason,
+	);
 
 	// injected 평가는 리뷰 요구에서 제외(이미 노출된 bypass — 사양 §4.3)
 	writeEval(tmpB, 'eval-0006', { ...baselineEval('eval-0006'), injected: true });
 	const vInj = verifyEvalReview(tmpB, 'eval-0006');
 	check('[B9] injected 평가 → 리뷰 요구 제외(mode=injected-bypass)', vInj.ok === true && vInj.mode === 'injected-bypass');
+
+	// 리뷰 스탬프가 이미 있는 평가에 injected 를 **뒤늦게 붙이는** 것은 bypass 가 아니라 변조다.
+	// (eval-0001 은 B3 에서 점수를 변조해 둔 상태 — injected 한 줄을 얹어도 해시 검증을 피할 수 없어야 한다)
+	const tamperedPlus = { ...readEval(tmpB, 'eval-0001'), injected: true };
+	writeFileSync(path.join(tmpB, 'harness', 'evaluations', 'eval-0001.json'), JSON.stringify(tamperedPlus, null, 2) + '\n', 'utf8');
+	const vLate = verifyEvalReview(tmpB, 'eval-0001');
+	check('[B9] 리뷰 스탬프 있는 평가에 injected 부착 → bypass 미적용(변조 탐지 유지)', vLate.ok === false && /변조/.test(vLate.reason), vLate.reason);
 
 	check('[B10] reviewContractActive: 실제 repo=활성 / 임시 cwd=비활성', reviewContractActive(repoRoot) === true && reviewContractActive(tmpB) === false);
 } finally {

@@ -163,6 +163,37 @@ try {
 	check('[7] gate-status 가 이번 사이클(step-0#2)로 조회됨', gs !== null && gs.passed === false);
 	check('[7] 실패 게이트 이름 보존', !!gs && gs.gates?.[0]?.name === 'check-arch');
 	check('[7] 다른 사이클로 조회하면 null(stale 차단)', readGateStatus(tmpDir, 'step-9#0') === null);
+
+	// 8) env 주입 격리(F24 봉합) — HARNESS_EVAL_SCORE 는 HARNESS_SELFTEST=1/CI 밖에서 무시된다.
+	//    (--score CLI 플래그·opts.score 는 가시적 우회이므로 종전대로 유효 — 위 1)~6) 이 그 경로다)
+	const tmpEnv = mkdtempSync(path.join(os.tmpdir(), 'donegate-envgate-'));
+	const savedEnv = {
+		HARNESS_SELFTEST: process.env.HARNESS_SELFTEST,
+		CI: process.env.CI,
+		HARNESS_EVAL_SCORE: process.env.HARNESS_EVAL_SCORE,
+	};
+	try {
+		delete process.env.HARNESS_SELFTEST;
+		delete process.env.CI;
+		process.env.HARNESS_EVAL_SCORE = '95';
+		const rIgnored = runDoneGate({ json: true, skipDeterministic: true }, tmpEnv);
+		check(
+			'[8] 비 CI/셀프테스트 환경에서 env 주입 무시 → 평가 없음 탈락(exit 1)',
+			rIgnored.exitCode === 1 && rIgnored.result.evaluation === null,
+		);
+		process.env.HARNESS_SELFTEST = '1';
+		const rAllowed = runDoneGate({ json: true, skipDeterministic: true }, tmpEnv);
+		check(
+			'[8] HARNESS_SELFTEST=1 에서는 env 주입 유효(exit 0 + bypass 노출)',
+			rAllowed.exitCode === 0 && rAllowed.result.bypass === 'injected-score',
+		);
+	} finally {
+		for (const [k, v] of Object.entries(savedEnv)) {
+			if (v === undefined) delete process.env[k];
+			else process.env[k] = v;
+		}
+		rmSync(tmpEnv, { recursive: true, force: true });
+	}
 } catch (err) {
 	failures.push(`예외: ${err && err.stack ? err.stack : String(err)}`);
 } finally {

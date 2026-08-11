@@ -4,7 +4,7 @@
 // 실제 harness-setup 저장소는 절대 변경하지 않습니다.
 // 성공: 'GITFLOW SELFTEST: PASS' 출력 + exit 0 / 실패: 실패 목록 + exit 1.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -375,6 +375,134 @@ function runMergeConflictAbortTests() {
 	}
 }
 
+function runStepMatchGuardTests() {
+	console.log('[9] merge-step 현재 step 일치 검증 — state.json 이 가리키는 step 만 병합');
+	const dir = makeTempRepo(false);
+	try {
+		runGitFlow(dir, ['seed-main']);
+		// state.json: 현재 step 은 01-demo (planSteps[0])
+		writeFileSync(
+			path.join(dir, 'harness', 'state.json'),
+			JSON.stringify({ planSteps: ['01-demo', '02-other'], currentStepIdx: 0 }) + '\n',
+			'utf8',
+		);
+		// 다른 step(02-other) 브랜치에 작업물을 만들고 병합 시도 → 거부되어야 한다
+		runGitFlow(dir, ['start-step', '02', 'other']);
+		writeFileSync(path.join(dir, 'o.txt'), 'other work\n', 'utf8');
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: other work']);
+		const wrong = runGitFlow(dir, ['merge-step', '02', 'other', '--gate-ok']);
+		check('현재 step 이 아닌 브랜치 병합 → 거부(exit != 0)', wrong.code !== 0);
+		check('거부 사유에 현재 step(step/01-demo) 표기', /step\/01-demo/.test(wrong.stderr));
+		// --any-step 은 의도적 병합 허용 (우회는 항상 가시적이어야 한다)
+		const anyStep = runGitFlow(dir, ['merge-step', '02', 'other', '--gate-ok', '--any-step']);
+		check('--any-step 명시 시 다른 step 병합 허용(exit 0)', anyStep.code === 0);
+		// 현재 step(01-demo)의 병합은 종전대로 통과
+		runGitFlow(dir, ['start-step', '01', 'demo']);
+		writeFileSync(path.join(dir, 'd.txt'), 'demo work\n', 'utf8');
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: demo work']);
+		const right = runGitFlow(dir, ['merge-step', '01', 'demo', '--gate-ok']);
+		check('현재 step 브랜치 병합은 통과(exit 0)', right.code === 0);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+function runMainAdvanceRegateTests() {
+	console.log('[10] main 전진 시 병합 결과 재게이트 — 실패하면 ORIG_HEAD 롤백');
+	const dir = makeTempRepo(false);
+	try {
+		// 스텁 done-gate: step 브랜치에서는 통과(exit 0), main 에서는 실패(exit 1).
+		// → 병합 전 게이트는 통과시키고, 병합 결과 재게이트만 실패시켜 롤백 경로를 검증한다.
+		mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+		writeFileSync(
+			path.join(dir, 'scripts', 'done-gate.mjs'),
+			[
+				`import { execSync } from 'node:child_process';`,
+				`const b = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();`,
+				`process.exit(b === 'main' ? 1 : 0);`,
+			].join('\n'),
+			'utf8',
+		);
+		runGitFlow(dir, ['seed-main']);
+		runGitFlow(dir, ['start-step', '01', 'adv']);
+		writeFileSync(path.join(dir, 'a.txt'), 'step work\n', 'utf8');
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: adv work']);
+		// main 을 충돌 없이 전진시킨다 (의도적 우회 HARNESS_ALLOW_MAIN=1)
+		git(dir, ['checkout', 'main']);
+		writeFileSync(path.join(dir, 'm.txt'), 'main advanced\n', 'utf8');
+		git(dir, ['add', '-A']);
+		execFileSync('git', ['commit', '-m', 'chore: main advance'], {
+			cwd: dir,
+			stdio: 'pipe',
+			env: { ...process.env, HARNESS_ALLOW_MAIN: '1' },
+		});
+		const mainBefore = git(dir, ['rev-parse', 'main']);
+		git(dir, ['checkout', 'step/01-adv']);
+
+		const merge = runGitFlow(dir, ['merge-step', '01', 'adv']);
+		check('병합 결과 재게이트 실패 → merge-step exit != 0', merge.code !== 0);
+		check('실패 메시지에 롤백 안내', /merge-step 롤백/.test(merge.stderr));
+		check('main 이 병합 전 커밋으로 복귀(ORIG_HEAD 롤백)', git(dir, ['rev-parse', 'main']) === mainBefore);
+		check('롤백 후 step 브랜치로 복귀', currentBranch(dir) === 'step/01-adv');
+
+		// 재게이트가 통과하면 병합은 성공하고 재게이트 로그가 남는다
+		writeFileSync(path.join(dir, 'scripts', 'done-gate.mjs'), 'process.exit(0);\n', 'utf8');
+		const merge2 = runGitFlow(dir, ['merge-step', '01', 'adv']);
+		check('재게이트 통과 → 병합 성공(exit 0)', merge2.code === 0);
+		check('병합 결과 재게이트 통과 로그', /병합 결과 재게이트 통과/.test(merge2.stdout));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+function runHookChainTests() {
+	console.log('[11] 기존 pre-commit 훅 체이닝 — 기존 훅 유지 + main 가드 선행');
+	const dir = makeTempRepo(false);
+	try {
+		const hookPath = path.join(dir, '.git', 'hooks', 'pre-commit');
+		mkdirSync(path.dirname(hookPath), { recursive: true });
+		// 기존 훅: 실행 흔적 파일을 남기고 통과 (husky 유사 시나리오)
+		writeFileSync(hookPath, '#!/bin/sh\ntouch custom-hook-executed\nexit 0\n', 'utf8');
+		runGitFlow(dir, ['seed-main']);
+		const hook = readFileSync(hookPath, 'utf8');
+		check('기존 훅에 가드 마커 삽입(체이닝)', hook.includes('harness-main-guard'));
+		check('기존 훅 본문 보존', hook.includes('custom-hook-executed'));
+		check('셔뱅이 첫 줄로 유지', hook.startsWith('#!/bin/sh'));
+		rmSync(path.join(dir, 'custom-hook-executed'), { force: true }); // seed 커밋의 흔적 제거
+
+		// main 직접 커밋 → 체이닝된 가드가 기존 훅보다 먼저 차단한다
+		writeFileSync(path.join(dir, 'x.txt'), 'direct on main\n', 'utf8');
+		git(dir, ['add', '-A']);
+		let blocked = false;
+		try {
+			git(dir, ['commit', '-m', 'feat: direct main work']);
+		} catch {
+			blocked = true;
+		}
+		check('main 직접 커밋이 체이닝 가드로 거부됨', blocked);
+		check('가드가 기존 훅보다 선행(흔적 파일 미생성)', !existsSync(path.join(dir, 'custom-hook-executed')));
+
+		// step 브랜치 커밋 → 가드 통과 + 기존 훅도 실행된다
+		runGitFlow(dir, ['start-step', '01', 'chain']);
+		writeFileSync(path.join(dir, 'y.txt'), 'work\n', 'utf8');
+		git(dir, ['add', '-A']);
+		let stepOk = false;
+		try {
+			git(dir, ['commit', '-m', 'feat: chained work']);
+			stepOk = true;
+		} catch {
+			stepOk = false;
+		}
+		check('step 브랜치 커밋은 가드 통과', stepOk);
+		check('기존 훅도 함께 실행됨(흔적 파일 생성)', existsSync(path.join(dir, 'custom-hook-executed')));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
 function main() {
 	console.log('=== git-flow selftest (임시 저장소에서만 실행) ===');
 	console.log(`temp base: ${os.tmpdir()}`);
@@ -387,6 +515,9 @@ function main() {
 		runEmptyMergeGuardTests();
 		runMainGuardHookTests();
 		runMergeConflictAbortTests();
+		runStepMatchGuardTests();
+		runMainAdvanceRegateTests();
+		runHookChainTests();
 	} catch (err) {
 		console.error('SELFTEST 예외:', err.message);
 		failures.push(`예외: ${err.message}`);
