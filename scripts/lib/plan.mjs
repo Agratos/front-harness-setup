@@ -74,6 +74,55 @@ export function findStep(plan, { label, idx }) {
 	return { step: null, matchedBy: null };
 }
 
+/**
+ * 계획을 **시드 입력**으로 쓸 수 있는지 검증한다.
+ *
+ * 왜 필요한가: 예전에는 계획이 두 곳에 따로 있었다 —
+ *   ① `loop.mjs --init "01-login,02-dashboard"` 의 문자열 인자 (state.planSteps 가 됨)
+ *   ② `harness/plan.json` 의 수용기준
+ * 같은 계획을 **두 번 적는** 구조라 라벨이 어긋나면 AC 가 엉뚱한 step 에 붙거나 조용히 무시됐다.
+ * 이제 plan.json 이 정본이고 planSteps 는 여기서 **파생**된다(`--init-plan`).
+ *
+ * @param {object} plan
+ * @returns {{ok:boolean, errors:string[], warnings:string[], labels:string[]}}
+ */
+export function validatePlan(plan) {
+	const errors = [];
+	const warnings = [];
+	const steps = Array.isArray(plan?.steps) ? plan.steps : null;
+	if (!steps) return { ok: false, errors: ['steps 가 배열이 아닙니다'], warnings, labels: [] };
+	if (steps.length === 0) return { ok: false, errors: ['steps 가 비어 있습니다 — 최소 1개 step 이 필요합니다'], warnings, labels: [] };
+
+	const labels = [];
+	const seen = new Set();
+	steps.forEach((s, i) => {
+		const label = typeof s?.label === 'string' ? s.label.trim() : '';
+		if (!label) {
+			errors.push(`steps[${i}]: label 이 없습니다 (예: "01-login")`);
+			return;
+		}
+		if (seen.has(label)) errors.push(`steps[${i}]: label 중복 — "${label}"`);
+		seen.add(label);
+		labels.push(label);
+		// 라벨은 git 브랜치명(step/<nn>-<slug>)으로 직결되므로 형식을 권고한다.
+		if (!/^\d{1,3}[-_ ]/.test(label)) {
+			warnings.push(`steps[${i}] "${label}": "<nn>-<slug>" 형식을 권장합니다 (브랜치명 step/<nn>-<slug> 로 직결)`);
+		}
+	});
+
+	// 첫 step 에 AC 가 없으면 첫 사이클이 "무엇을 만들려는지 모르는 상태"로 돌아간다 — 막는다.
+	if (labels.length > 0 && acceptanceOf(steps[0]).length === 0) {
+		errors.push(`steps[0] "${steps[0]?.label ?? '?'}": acceptance 가 비어 있습니다 — 첫 step 의 수용기준은 필수입니다`);
+	}
+	steps.slice(1).forEach((s, i) => {
+		if (acceptanceOf(s).length === 0) {
+			warnings.push(`steps[${i + 1}] "${s?.label ?? '?'}": acceptance 미작성 — design 페이즈에서 채우세요(그 전까지 AC 검사 비활성)`);
+		}
+	});
+
+	return { ok: errors.length === 0, errors, warnings, labels };
+}
+
 /** step 의 AC 목록을 정규화(문자열 축약형도 허용: "AC-1: 텍스트"). */
 export function acceptanceOf(step) {
 	const raw = step?.acceptance ?? [];
@@ -150,4 +199,13 @@ export function formatCoverage(cov) {
 	return head + miss + unk;
 }
 
-export default { planPath, readPlan, findStep, acceptanceOf, coveredAcIds, checkAcCoverage, formatCoverage };
+export default {
+	planPath,
+	readPlan,
+	validatePlan,
+	findStep,
+	acceptanceOf,
+	coveredAcIds,
+	checkAcCoverage,
+	formatCoverage,
+};

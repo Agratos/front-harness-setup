@@ -112,22 +112,28 @@ export function nextAction(ctx) {
 			why: '상호작용 검증 전제조건이 충족되지 않았습니다',
 		};
 	}
-	// verify 를 아직 안 돌렸어도, AC 공백은 **지금** 알 수 있다 — 15초짜리 게이트를 돌려보고
-	// 알게 되는 것보다 낫다. 사용자가 헛돌지 않도록 미리 말해준다.
-	if (ac?.applicable && !ac.ok) {
+	if (ac?.present && ac.error) {
+		return { action: 'harness/plan.json 수정 → node scripts/loop.mjs', why: ac.error };
+	}
+	// AC 공백 안내는 **그것을 채울 자리에 왔을 때** 한다.
+	// decompose 에서 "단언에 ac 태그를 붙여라" 라고 하면 아직 스펙을 쓸 자리가 아닌데 앞질러 시키는 셈이다.
+	// 스펙은 design 에서 확정되므로, design 이후부터 이 안내를 다음 행동으로 올린다.
+	const acGap = ac?.applicable && !ac.ok;
+	const afterDesign = ['design', 'implement', 'verify', 'evaluate', 'debate', 'merge', 'vote'].includes(state.phase);
+	if (acGap && afterDesign && !['design', 'implement'].includes(state.phase)) {
+		// verify/evaluate/debate/merge 에서 AC 가 비어 있으면 loop 를 불러도 차단만 된다 → 먼저 채우게 한다.
 		return {
 			action: `단언에 ac 태그 추가(${ac.missing.join(', ')}) → node scripts/loop.mjs`,
 			why: `수용기준 ${ac.missing.length}개가 어떤 단언으로도 검증되지 않습니다 — verify 가 게이트 실행 전에 차단합니다`,
 		};
 	}
-	if (ac?.present && ac.error) {
-		return { action: 'harness/plan.json 수정 → node scripts/loop.mjs', why: ac.error };
-	}
 	const isAgentPhase = ['decompose', 'design', 'implement', 'evaluate', 'debate', 'vote'].includes(state.phase);
 	if (isAgentPhase) {
+		// 에이전트 페이즈에서는 AC 공백을 "이유" 로 함께 알려준다(행동은 여전히 /run-cycle).
+		const acNote = acGap ? ` · ⚠ 미검증 수용기준 ${ac.missing.join(', ')} — ${state.phase === 'design' ? '이 페이즈에서 단언을 작성하세요' : 'design 에서 채워야 verify 를 통과합니다'}` : '';
 		return {
 			action: '/run-cycle  (에이전트 작업 후 node scripts/loop.mjs 로 페이즈 마감)',
-			why: `'${state.phase}' 는 에이전트가 산출물을 만드는 자리입니다 — ${PHASE_MEANING[state.phase] ?? ''}`,
+			why: `'${state.phase}' 는 에이전트가 산출물을 만드는 자리입니다 — ${PHASE_MEANING[state.phase] ?? ''}${acNote}`,
 		};
 	}
 	return {
@@ -153,6 +159,16 @@ export function collect(repoRoot) {
 		const idx = state.currentStepIdx ?? 0;
 		const label = (state.planSteps ?? [])[idx];
 		const { step: planStep, matchedBy } = findStep(plan, { label, idx });
+
+		// 계획 정본(plan.json)과 실행 상태(state.planSteps)가 어긋났는지.
+		// `--init "라벨,라벨"` 로 시드하고 plan.json 을 따로 적으면 생기는 실패 유형이다.
+		// 라벨이 다르면 AC 가 엉뚱한 step 에 붙거나 조용히 무시된다 — 눈에 보이게 만든다.
+		const planLabels = (plan.steps ?? []).map((s) => s?.label);
+		const stateLabels = state.planSteps ?? [];
+		const drift =
+			planLabels.length !== stateLabels.length || planLabels.some((l, i) => l !== stateLabels[i])
+				? { planLabels, stateLabels }
+				: null;
 		const specPath = path.join(repoRoot, 'harness', 'eval-scenario.json');
 		const spec = existsSync(specPath) ? readJson(specPath) : null;
 		const cov = checkAcCoverage(planStep, spec);
@@ -160,6 +176,8 @@ export function collect(repoRoot) {
 			present: true,
 			error: planError ?? null,
 			matchedBy,
+			drift,
+			source: plan.source ?? null,
 			goal: planStep?.goal ?? null,
 			list: acceptanceOf(planStep),
 			...cov,
@@ -281,11 +299,19 @@ function printHuman(s) {
 		line('수용기준 AC', `— 이 step(${label})에 acceptance 미선언`);
 	} else {
 		line('수용기준 AC', `${mark(s.ac.ok)} ${s.ac.covered.length}/${s.ac.total} 단언으로 덮임${s.ac.missing.length ? ` · 미검증: ${s.ac.missing.join(', ')}` : ''}`);
+		if (s.ac.source) line('', `출처: ${s.ac.source}`);
 		if (s.ac.goal) line('', `목표: ${s.ac.goal}`);
 		for (const a of s.ac.list) {
 			const covered = s.ac.covered.includes(a.id);
 			line('', `${covered ? '✓' : '·'} ${a.id} ${a.text}`);
 		}
+	}
+
+	// 계획 정본 ↔ 실행 상태 불일치 — AC 가 엉뚱한 step 에 붙는 원인
+	if (s.ac.drift) {
+		line('⚠ 계획 불일치', `plan.json 라벨 [${s.ac.drift.planLabels.join(', ')}]`);
+		line('', `state.planSteps [${s.ac.drift.stateLabels.join(', ')}]`);
+		line('', 'plan.json 을 정본으로 다시 시드하세요: node scripts/loop.mjs --init-plan (진행 중이면 라벨을 수동 일치)');
 	}
 
 	// 실패 카운터
