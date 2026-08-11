@@ -13,7 +13,7 @@ model: opus
 
 ## 입력
 
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - FSD 규약 문서 (`docs/fsd/`)
 - 기존 소스 구조 (`src/`)
 - `harness/state.json` — 현재 하네스 상태
@@ -39,7 +39,7 @@ model: opus
 
 ## 사용 도구
 
-- **읽기**: `src/`, `docs/fsd/`, `harness/`, `.omc/plans/`, `tsconfig*.json`, `package.json`
+- **읽기**: `src/`, `docs/fsd/`, `harness/`(특히 `plan.json`), `tsconfig*.json`, `package.json`
 - **쓰기**: `harness/decisions/<id>-arch.md`
 - **실행**: 없음 (실행·검증은 QA 에이전트 담당)
 
@@ -56,7 +56,7 @@ model: opus
 
 ```
 주장: API 응답 정규화 로직은 entities 레이어에 두어야 합니다.
-이유: docs/fsd/layers.md §4.1 — entities 는 서버 모델을 클라이언트 도메인 모델로 변환하는 책임을 가집니다. features 에 두면 동일 변환 로직이 여러 feature 에 중복되어 유지보수 비용이 증가합니다(ADR-005 참조).
+이유: docs/fsd/entities.md — entities 는 서버 모델(DTO)을 클라이언트 도메인 모델로 변환하는 책임을 가집니다(DTO ↔ Mapper ↔ Types). features 에 두면 동일 변환 로직이 여러 feature 에 중복되어 유지보수 비용이 증가합니다. (가상 예시)
 ```
 
 **미합의 시 타협안 제시 방법**

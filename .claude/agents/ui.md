@@ -20,7 +20,7 @@ FSD features/widgets/pages 의 ui 세그먼트에 속하는 화면 컴포넌트�
 
 ## 입력
 
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - FSD 규약 문서 (`docs/fsd/`)
 - 구현 대상 컴포넌트 목록 및 디자인 명세 (PM이 전달)
 - `harness/state.json` — 현재 하네스 상태
@@ -33,7 +33,7 @@ FSD features/widgets/pages 의 ui 세그먼트에 속하는 화면 컴포넌트�
 
 ## 사용 도구
 
-- **읽기**: `src/` 전체, `docs/fsd/`, `harness/state.json`, `.omc/plans/`
+- **읽기**: `src/` 전체, `docs/fsd/`, `harness/state.json`, `harness/plan.json`
 - **쓰기**: `src/features/*/ui/`, `src/widgets/*/ui/`, `src/pages/*/ui/`
 - **실행**: 없음 (빌드·린트는 QA 에이전트 담당)
 
@@ -50,7 +50,7 @@ FSD features/widgets/pages 의 ui 세그먼트에 속하는 화면 컴포넌트�
 
 ```
 주장: DateRangePicker 는 shared/ui 가 아닌 features/date-filter/ui 에 배치해야 합니다.
-이유: docs/fsd/layers.md §3.2 — 도메인 결합 컴포넌트는 features 레이어에 위치해야 하며, shared/ui 는 도메인 무관 범용 컴포넌트만 허용합니다.
+이유: docs/fsd/shared.md·docs/fsd/features.md — shared/ui 는 도메인 무관 범용 컴포넌트만 허용하고, 도메인 결합 컴포넌트는 features 레이어에 둡니다. (가상 예시)
 ```
 
 **미합의 시 타협안 제시 방법**

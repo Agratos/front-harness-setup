@@ -15,7 +15,7 @@ model: sonnet
 
 - 서버 API 문서 (OpenAPI YAML/JSON, REST 명세, GraphQL 스키마 등 — PM이 경로 전달)
 - FSD 엔티티 규약 (`docs/fsd/entities.md`)
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - `harness/state.json` — 현재 하네스 상태
 - 기존 엔티티 파일 (`src/entities/`)
 
@@ -53,7 +53,7 @@ src/entities/<entity>/
 
 ## 사용 도구
 
-- **읽기**: API 문서 파일, `docs/fsd/entities.md`, `src/entities/`, `harness/state.json`, `.omc/plans/`
+- **읽기**: API 문서 파일, `docs/fsd/entities.md`, `src/entities/`, `harness/state.json`, `harness/plan.json`
 - **쓰기**: `src/entities/<entity>/model/dto/<entity>-<action>.dto.ts`, `.../model/types/<entity>-<action>.types.ts`, `.../model/mapper/<entity>-<action>.mapper.ts`, `.../model/store/<entity>.store.ts`, `.../index.ts`, `harness/evaluations/entity-model-<id>.md`
 - **실행**: 없음 (타입 검증은 QA 에이전트 담당)
 

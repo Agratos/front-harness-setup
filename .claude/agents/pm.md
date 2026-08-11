@@ -14,7 +14,7 @@ model: opus
 ## 입력
 
 - CEO가 전달한 페이즈별 에이전트 투입 계획 (`harness/decisions/<id>-roster.md`)
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - `harness/state.json` — 현재 하네스 상태
 - 각 에이전트의 `주장:이유` 기여 (에이전트 호출 응답)
 
@@ -56,6 +56,22 @@ why: <이유>
 타협안: <있으면 기재>
 ```
 
+## 페이즈 마감 기록은 record-decision CLI 로 — ⛔ (페이즈 산출물 계약)
+
+`decompose`/`design`/`debate`/`vote` 는 **이번 사이클 스탬프가 찍힌 결정 기록이 없으면 전진하지 못합니다**
+(`lib/phase-gate.mjs` — 코드 강제). 스탬프(`<!-- harness:artifact cycleId=… phase=… -->`)는 손으로 적지 말고,
+전용 CLI 가 `harness/state.json` 에서 사이클(`step-<idx>#<rework>`)을 읽어 자동으로 찍게 하세요:
+
+```bash
+node scripts/record-decision.mjs --phase=debate \
+  --topic="<안건>" --conclusion="<결론>" --why="<근거>" \
+  --claims="ui:주장:이유;ux:주장:이유"
+```
+
+- 위 "기여 기록" 템플릿은 **협의 과정(증분 append)** 의 구조이고, **페이즈를 마감하는 결론 기록**은 반드시 이 CLI 로 남깁니다. 손으로 만든 기록에는 스탬프가 없어 **일하고도 전진이 막힙니다**.
+- 재작업 라운드가 바뀌면(`step-0#0` → `step-0#1`) 이전 회차 기록은 증거가 아닙니다 — 라운드마다 새 기록이 필요합니다.
+- 지금 무엇이 빠졌는지는 `node scripts/status.mjs` 의 `산출물 계약` 줄과 `다음 1개 행동`이 알려줍니다.
+
 ## 투표 절차 (5회 협의 결렬 시)
 
 **트리거는 코드가 잡습니다.** `loop.mjs` 가 `state.reworkCount` 를 세다가 `MAX_REWORK(=5)` 초과 시 `vote` 페이즈로 진입시킵니다(드라이버가 자동 분기 — PM 이 직접 횟수를 셀 필요 없음). PM 은 `vote` 페이즈에서 아래 **투표의 내용**을 수행합니다.
@@ -64,7 +80,7 @@ why: <이유>
 2. **투표**: 해당 단계에 참여한 에이전트 전원이 각 1표를 행사하고 `주장:이유` 형식으로 입장을 제출합니다.
 3. **집계**: PM 이 표 분포를 집계합니다.
 4. **결정**: 다수결로 결정합니다. 동률이면 CEO 캐스팅보트(확정 3).
-5. **기록·진행**: 투표 결과와 표 분포를 `harness/decisions/<id>.md` 에 기록합니다. 이후 드라이버가 `vote → merge` 로 전진하며 `gateOverride` 로 done-gate 의 **주관 임계만 우회**합니다(결정적 게이트 typecheck/lint/check-arch/test 는 여전히 강제 — 깨진 코드는 투표로도 병합 안 됨). 완전 자율 유지 — 주관 점수 정체로는 blocked 되지 않습니다.
+5. **기록·진행**: 투표 결과와 표 분포를 `harness/decisions/<id>.md` 에 기록하고, 페이즈 마감은 `node scripts/record-decision.mjs --phase=vote --topic=… --conclusion=… --why=…` 로 남깁니다(스탬프 자동 — 없으면 vote 가 전진하지 못함). 이후 드라이버가 `vote → merge` 로 전진하며 `gateOverride` 로 done-gate 의 **주관 임계만 우회**합니다(결정적 게이트 typecheck/lint/check-arch/test 는 여전히 강제 — 깨진 코드는 투표로도 병합 안 됨). 완전 자율 유지 — 주관 점수 정체로는 blocked 되지 않습니다.
 
 **투표 기록 스키마 (decisions/<id>.md 내 섹션)**
 
@@ -84,7 +100,7 @@ why: <이유>
 
 ## 사용 도구
 
-- **읽기**: `harness/state.json`, `harness/decisions/`, `.omc/plans/`, `.claude/agents/`
+- **읽기**: `harness/state.json`, `harness/decisions/`, `harness/plan.json`, `.claude/agents/`
 - **쓰기**: `harness/decisions/<id>.md` (증분 append), `harness/state.json` (업데이트 요청)
 - **실행**: 에이전트 호출 (최대 동시 K=3), 오케스트레이터를 통한 서브에이전트 위임
 

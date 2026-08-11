@@ -25,7 +25,7 @@ model: opus
 
 ## 입력
 
-- 현재 단계 계획 (`.omc/plans/` 내 활성 플랜 파일)
+- 현재 단계 계획 (`harness/plan.json` — 계획 정본: step 별 goal·수용기준 AC)
 - `harness/state.json` — 현재 하네스 상태 및 페이즈 정보
 - 이전 페이즈 결과 요약 (`harness/decisions/` 최신 항목)
 - 9개 에이전트 역할 정의 (`.claude/agents/README.md`)
@@ -68,7 +68,7 @@ PM 지침: <이번 페이즈에서 PM이 특별히 주의할 사항>
 
 ## 사용 도구
 
-- **읽기**: `harness/state.json`, `harness/decisions/`, `.omc/plans/`, `.claude/agents/README.md`
+- **읽기**: `harness/state.json`, `harness/decisions/`, `harness/plan.json`, `.claude/agents/README.md`
 - **쓰기**: `harness/decisions/<id>-roster.md`
 - **실행**: 없음
 
