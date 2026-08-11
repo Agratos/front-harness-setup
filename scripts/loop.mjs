@@ -28,6 +28,7 @@ import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readS
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
 import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
 import { logError } from './lib/log.mjs';
+import { checkPhaseContract, codeFingerprint, PHASE_CONTRACT } from './lib/phase-gate.mjs';
 import { planPath, validatePlan } from './lib/plan.mjs';
 
 // step 당 페이즈 순서. merge 다음은 (다음 step 의) decompose 로 래핑한다.
@@ -44,6 +45,11 @@ export const MAX_ESCALATION = 3;
 
 // loop.mjs 가 직접 결정적으로 실행하는 페이즈
 const DETERMINISTIC_PHASES = new Set(['verify', 'merge']);
+// 페이즈 산출물 계약(`lib/phase-gate.mjs`)이 전진 조건을 검사하는 에이전트 페이즈.
+// v3 2단계 — verify(E2E)·evaluate(평가 산출물)의 **개별 배선을 일반화**한 것이다.
+// 예전에는 이 페이즈들이 "requires agent work" 를 찍고 산출물 확인 없이 무조건 전진했다.
+// 즉 오케스트레이터가 페이즈를 통째로 건너뛰어도 하네스가 알아채지 못했다(1차 진단 F1).
+const CONTRACTED_PHASES = new Set(Object.keys(PHASE_CONTRACT));
 // 에이전트 페이즈이지만 **산출물 생성은 코드가 강제**하는 페이즈.
 // evaluate 는 에이전트가 캡처물을 보고 판단하는 페이즈지만, 그 캡처물·점수를 만드는 일은
 // 기계적이다. 예전에는 그 실행이 md 지시(run-cycle.md)에만 있어서 `eval-playwright.mjs` 의
@@ -219,13 +225,34 @@ export function computeTransition({ phase, currentStepIdx, stepCount, reworkCoun
  *   - typecheck/lint/test 실패 = 코드가 계약을 못 지킴 → **구현결함**
  *   - merge 인데 결정적 게이트는 green = 남은 실패 원인은 평가 임계·stale 평가 → **검증결함**
  *
- * @param {string} phase 실패한 페이즈 ('verify' | 'merge' | 'evaluate')
+ * 산출물 계약 실패(`detail.artifact`)는 이 3분류에 **한 칸을 더한다** — 되돌릴 곳이 없는 실패이기 때문이다.
+ * 설계·구현·검증 결함은 "다른 역할에게 되돌린다" 는 뜻이지만, 산출물 부재는 **그 페이즈의 담당자가
+ * 자기 결과물을 내놓지 않은 것**이므로 같은 자리에서 다시 해야 한다(`nextPhase = phase`).
+ * 예외: 코드 변경 부재는 구현 그 자체의 결함이므로 기존 분류(구현결함 → implement)를 그대로 쓴다.
+ *
+ * @param {string} phase 실패한 페이즈 ('verify' | 'merge' | 'evaluate' | 에이전트 페이즈)
  * @param {{passed?:boolean, gates?:Array<{name:string, ok:boolean}>}|null} gateStatus
- * @param {{e2e?:'assert'|'unverifiable', unverifiable?:string, evaluate?:string}} [detail] 세부 원인(옵션)
- * @returns {{kind:'설계결함'|'구현결함'|'검증결함', nextPhase:string, why:string}}
+ * @param {{e2e?:'assert'|'unverifiable', unverifiable?:string, evaluate?:string, artifact?:'decision'|'code'}} [detail] 세부 원인(옵션)
+ * @returns {{kind:'설계결함'|'구현결함'|'검증결함'|'산출물결함', nextPhase:string, why:string}}
  */
 export function classifyFailure(phase, gateStatus, detail = {}) {
 	const failedGates = (gateStatus?.gates ?? []).filter((g) => !g.ok).map((g) => g.name);
+
+	// 페이즈 산출물 계약 위반 — 증거가 없으면 전진하지 않는다.
+	if (detail.artifact === 'code') {
+		return {
+			kind: '구현결함',
+			nextPhase: 'implement',
+			why: '이 페이즈에서 코드 변경이 관측되지 않음 — 구현을 건너뛰었거나 빈 재작업 라운드',
+		};
+	}
+	if (detail.artifact) {
+		return {
+			kind: '산출물결함',
+			nextPhase: phase,
+			why: `'${phase}' 페이즈의 산출물(${detail.artifact})이 이번 사이클에 없음 — 같은 자리에서 산출물을 만들어야 함`,
+		};
+	}
 
 	// evaluate 페이즈가 이번 사이클의 평가 산출물을 만들지 못함 = 검증 수단의 결함.
 	if (phase === 'evaluate') {
@@ -525,7 +552,13 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 	// `start-step` 이 호출돼 실패하고 **step 01 이 브랜치 없이 main 에서 작업**됐다(실측 사고).
 	// 시드와 진행을 분리하면 호출 순서에 관계없이 안전하다.
 	if (justSeeded) {
-		const seededState = { ...state, status: 'running', phase: PHASE_ORDER[0], committed: false };
+		const seededState = {
+			...state,
+			status: 'running',
+			phase: PHASE_ORDER[0],
+			committed: false,
+			phaseEntryCode: codeFingerprint(repoRoot),
+		};
 		writeState(statePath, seededState);
 		return {
 			state: seededState,
@@ -644,7 +677,7 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 		// 성공 → 이 페이즈의 연속 실패 카운터를 리셋한다.
 		state = { ...state, failures: { ...(state.failures ?? {}), [phase]: 0 } };
 	} else if (AGENT_PHASES.has(phase)) {
-		// 산출물 생성이 기계적인 에이전트 페이즈는 코드가 먼저 실행해 재료를 확보한다.
+		// ── ① 산출물 생성이 기계적인 에이전트 페이즈는 코드가 먼저 실행해 재료를 확보한다.
 		let enforcedNote = '';
 		if (CODE_ENFORCED_AGENT_PHASES.has(phase)) {
 			const e = runEvaluatePhase(state, repoRoot);
@@ -664,6 +697,31 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 			state = { ...state, failures: { ...(state.failures ?? {}), [phase]: 0 } };
 			enforcedNote = ` | 산출물: ${e.note}`;
 		}
+
+		// ── ② 페이즈 산출물 계약 — 이 페이즈가 남겨야 할 증거가 **이번 사이클에** 있는지 확인한다.
+		// 증거가 없으면 전진하지 않는다. 계약 자체는 lib/phase-gate.mjs 가 선언·판정하고,
+		// 여기서는 실패를 기존 실패 라우팅(재시도 → 되돌림 → blocked)에 그대로 흘려보낸다.
+		if (CONTRACTED_PHASES.has(phase)) {
+			const c = checkPhaseContract({ repoRoot, state, phase });
+			if (!c.skipped) log(`페이즈 '${phase}' 산출물 계약(${c.kind}): ${c.ok ? '충족' : '미충족'} — ${c.reason}`);
+			if (!c.ok) {
+				if (c.hint) log(`  → ${c.hint}`);
+				return handleDeterministicFailure({
+					state,
+					phase,
+					detail: c.hint ? `${c.reason} | 조치: ${c.hint}` : c.reason,
+					repoRoot,
+					statePath,
+					rerun,
+					cause: c.cause ?? { artifact: 'decision' },
+				});
+			}
+			if (!c.skipped) {
+				state = { ...state, failures: { ...(state.failures ?? {}), [phase]: 0 } };
+				enforcedNote += ` | 계약: ${c.reason}`;
+			}
+		}
+
 		if (phase === 'debate') {
 			note = `PHASE debate (outcome=${debateOutcome}, rework=${state.reworkCount ?? 0}/${MAX_REWORK}) requires agent work via /run-cycle`;
 		} else if (phase === 'vote') {
@@ -710,6 +768,10 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 			failures: nextFailures,
 			escalations: nextEscalations,
 			gateOverride,
+			// 다음 페이즈의 **진입 시점 코드 지문**. implement 계약이 "진입 이후 코드가 달라졌는가" 를
+			// 판정하는 기준선이다. 재작업으로 implement 에 다시 들어올 때도 새로 찍히므로,
+			// 아무것도 고치지 않은 빈 재작업 라운드는 통과하지 못한다.
+			phaseEntryCode: codeFingerprint(repoRoot),
 		};
 	}
 	writeState(statePath, advanced);
@@ -756,6 +818,8 @@ function handleDeterministicFailure({ state, phase, detail, repoRoot, statePath,
 		const next = {
 			...advancePhase(committedState, classification.nextPhase),
 			escalations: routing.nextEscalations,
+			// 되돌림도 페이즈 진입이다 — implement 계약의 기준선을 다시 찍는다.
+			phaseEntryCode: codeFingerprint(repoRoot),
 		};
 		appendCycleLog(
 			repoRoot,

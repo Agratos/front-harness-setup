@@ -18,7 +18,9 @@
   - `merge` → `node scripts/git-flow.mjs merge-step <nn> <slug>` (done-gate 통과 시에만 병합).
 - **에이전트 주도 페이즈** (`decompose`, `design`, `implement`, `evaluate`, `debate`):
   `loop.mjs` 는 `PHASE <name> requires agent work via /run-cycle` 로그 + `harness/cycles/` 에
-  사이클 로그를 남기고 전진합니다. **실제 에이전트 추론은 이 커맨드가 담당**합니다.
+  사이클 로그를 남깁니다. **실제 에이전트 추론은 이 커맨드가 담당**합니다.
+  ⛔ 단, 전진하려면 **그 페이즈의 산출물(증거)이 이번 사이클에 존재**해야 합니다 — 아래 §페이즈 산출물 계약.
+  없으면 전진하지 않습니다(`산출물결함` → 같은 페이즈 재실행).
 
 ## 페이즈별 오케스트레이터 동작
 
@@ -50,6 +52,33 @@
 
 > `vote` 는 선형 시퀀스가 아니라 **분기 페이즈**입니다. `debate` 가 `rework` 판정을 냈는데
 > `reworkCount` 가 이미 5(=MAX_REWORK)에 도달했을 때만 `loop.mjs` 가 `merge` 대신 `vote` 로 보냅니다.
+
+## 페이즈 산출물 계약 ⛔ (코드 강제 — `lib/phase-gate.mjs`)
+
+> ✅ **검사자**: `loop.mjs` 가 에이전트 페이즈를 마감(전진)하기 **직전**에 `checkPhaseContract` 로 확인한다.
+> 검증: `node scripts/phase-gate.selftest.mjs` · `node scripts/loop.selftest.mjs`(시나리오 H).
+
+각 페이즈는 **이번 사이클(`step-<idx>#<rework>`)에 무엇을 남겼는가**로 마감된다.
+증거가 없으면 전진하지 않는다 — "페이즈를 no-op 로 건너뛰지 않는다" 는 지시가 이제 코드다.
+
+| 페이즈 | 요구 증거 | 만드는 방법 | 미충족 시 |
+| --- | --- | --- | --- |
+| `decompose` | 스탬프 찍힌 결정 기록 | `node scripts/record-decision.mjs --phase=decompose --topic=… --conclusion=… --why=…` | `산출물결함` → decompose 재실행 |
+| `design` | ① 스펙·AC 계약(`plan.json` acceptance ↔ `eval-scenario.json` 의 `ac` 태그) ② 설계 결정 기록 | ① 두 파일 작성 ② `--phase=design` 기록 | ①은 `설계결함`, ②는 `산출물결함` → design 재실행 |
+| `implement` | **진입 시점 대비 코드 변경**(`harness/`·`docs/` 제외) | 실제 구현. 코드가 필요 없으면 `--phase=implement` 로 **면제 사유 기록** | `구현결함` → implement 재실행 |
+| `evaluate` | 이번 사이클 평가 산출물 | 드라이버가 `eval-playwright` 를 직접 실행(§evaluate) | `검증결함` → evaluate 재실행 |
+| `debate` | 토론 결론 기록 | `--phase=debate` 기록 | `산출물결함` → debate 재실행 |
+| `vote` | 투표 결과 기록 | `--phase=vote` 기록 | `산출물결함` → vote 재실행 |
+
+- **스탬프는 코드가 찍는다**: `record-decision.mjs` 가 `harness/state.json` 에서 사이클을 읽어
+  `<!-- harness:artifact cycleId=… phase=… -->` 를 기록 상단에 남긴다. 손으로 적지 말 것 —
+  사이클을 잘못 계산하면 **일하고도 막힌다**.
+- **신선도**: 재작업 라운드가 바뀌면(`step-0#0` → `step-0#1`) 이전 회차 기록은 증거가 아니다.
+  즉 재작업할 때마다 새 토론·새 코드 변경이 필요하다(빈 재작업 라운드 차단).
+- **면제는 명시로**: 코드 변경이 없는 step(문서·설정만)은 기록으로 이유를 남긴다. 침묵의 통과는 없다.
+- **환경 부재만 skip**: `scripts/record-decision.mjs` 가 없는 환경(스켈레톤·셀프테스트 임시 cwd)에서는
+  계약이 비활성이고, `implement` 의 코드 검사는 git 이 없으면 생략된다. 그 외 **산출물 부재는 실패**다.
+- 지금 무엇이 빠졌는지는 `node scripts/status.mjs` 의 `산출물 계약` 줄과 `다음 1개 행동`이 알려준다.
 
 ## evaluate — 캡처물(스크린샷+DOM) 소비 평가 ⛔ (무조건)
 

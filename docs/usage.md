@@ -88,11 +88,30 @@ logDecision(repoRoot, {
 	why: '왜 이 결론인지',
 	impact: '영향 범위',
 	linkedStep: '01-login',
+	cycleId: 'step-0#0', // (선택) 페이즈 산출물 스탬프 — 아래 참조
+	phase: 'debate', //     (선택) 이 기록이 마감하는 페이즈
 });
 // → harness/decisions/decision-NNNN.md (결정적 id)
 ```
 
 예시 산출물: `harness/decisions/example-0001.md` (스키마 데모).
+
+#### 페이즈 산출물 계약용 기록은 CLI 로 남긴다
+
+`decompose`/`design`/`debate`/`vote` 는 **이번 사이클의 기록이 없으면 전진하지 않습니다**
+(페이즈 산출물 계약 — `lib/phase-gate.mjs`). 그 기록에는 사이클 스탬프가 필요하고,
+스탬프를 손으로 적으면 사이클을 잘못 계산해 **일하고도 막히므로** 전용 CLI 를 쓰세요:
+
+```bash
+node scripts/record-decision.mjs --phase=debate \
+  --topic="평가 결과 통과 여부" --conclusion="통과" --why="major 0 + 종합 94" \
+  --claims="customer:통과:불만 없음;ux:통과:흐름 명확"
+```
+
+- `harness/state.json` 에서 사이클(`step-<idx>#<rework>`)을 읽어 스탬프를 자동으로 찍습니다.
+- `--topic`/`--conclusion`/`--why` 는 필수입니다 — 빈 기록은 증거가 아닙니다.
+- 코드 변경이 없는 step 의 **면제 기록**도 같은 CLI 로 남깁니다: `--phase=implement`.
+- 지금 무엇이 빠졌는지는 `yarn status` 의 `산출물 계약` 줄이 알려줍니다.
 
 ### 재작업 한도 (코드 강제)
 

@@ -29,6 +29,7 @@
 | `blockedReason`    | `string \| null`                             | `status='blocked'` 사유(사람이 읽는 한 줄). 상세는 `harness/errors/` 최신 항목. 그 외 상태에서는 `null`.                                            |
 | `blockedAt`        | `string \| null`                             | `blocked` 시점의 저장소 지문(`HEAD|diff --shortstat|status --porcelain`). `--resume` 이 **조치 없이 재개**하는지 판정하는 근거입니다. 지문이 그대로면 재개를 거부합니다(강제는 `--resume --force`). git 을 쓸 수 없으면 `null`(검사 생략). |
 | `lastExecutedPhaseSeq` | `number \| null`                         | **실행에 착수한** `phaseSeq`. `loop.mjs` 가 페이즈를 돌리기 **직전**에 기록합니다. 정상 완료하면 `advancePhase` 가 `phaseSeq` 를 올려 `lastExecutedPhaseSeq < phaseSeq` 가 되고, 실행 중 크래시하면 두 값이 같은 채로 남습니다 → `wasInterrupted(state)` 가 이를 잡아 같은 페이즈를 RERUN 합니다. |
+| `phaseEntryCode`   | `string \| null`                             | 현재 페이즈에 **진입한 시점의 코드 지문**(`HEAD|numstat|porcelain` 에서 `harness/`·`docs/`·`.omc/` 를 제외). `implement` 산출물 계약이 "이 페이즈에서 코드가 실제로 달라졌는가" 를 판정하는 기준선입니다. 페이즈 전진·되돌림마다 새로 찍히므로 **빈 재작업 라운드**가 통과하지 못합니다. git 을 쓸 수 없으면 `null`(검사 생략). 산출물 경로를 제외하는 이유: 하네스는 매 페이즈 `harness/` 에 상태·로그를 쓰므로 포함시키면 항상 "변경 있음" 이 되어 검사가 무의미해집니다. |
 | `status`           | `'init' \| 'running' \| 'blocked' \| 'done'` | 실행 전체 상태. 초기값 `'init'`. `blocked` 는 자동 복구 포기 상태이며 `node scripts/loop.mjs --resume` 으로만 해제됩니다(조치 증거 필요 — `blockedAt` 참조).                            |
 
 ### 사이클 식별자 (`cycleId`) — 신선도의 단위
@@ -53,13 +54,18 @@
 | 되돌림 | 한도 도달 | **결함 분류**에 따라 `design`/`implement`/`evaluate` 로 전진, `escalations++` |
 | 항복 | `escalations > MAX_ESCALATION(3)` | `status='blocked'` + 사유 기록 + `harness/errors/` 기록, exit code 3 |
 
+> 에이전트 페이즈도 같은 라우팅을 씁니다. **페이즈 산출물 계약**(`lib/phase-gate.mjs`)이 미충족이면
+> `산출물결함` 으로 분류되어 **같은 페이즈**를 다시 실행합니다(되돌릴 다른 역할이 없는 실패이기 때문).
+> 3회 재시도 → 3회 되돌림을 소진하면 다른 실패와 마찬가지로 `blocked` 로 항복합니다.
+
 **결함 분류**(사내 멀티에이전트 조직 가이드의 3분류를 따름) — 근거는 `harness/gate-status.json` 실측값:
 
 | 분류 | 판정 근거 | 되돌릴 페이즈 |
 | --- | --- | --- |
-| 설계결함 | `check-arch` 실패 (레이어/경계 위반 = 구조 문제) | `design` |
-| 구현결함 | `typecheck`/`lint`/`test` 실패 | `implement` |
-| 검증결함 | `merge` 실패인데 결정적 게이트는 green (평가 임계·stale) | `evaluate` |
+| 설계결함 | `check-arch` 실패 (레이어/경계 위반 = 구조 문제) · 스펙/AC 부재(`no-spec`·`ac-uncovered` 등) | `design` |
+| 구현결함 | `typecheck`/`lint`/`test` 실패 · E2E 단언 실패 · **implement 에서 코드 변경 없음** | `implement` |
+| 검증결함 | `merge` 실패인데 결정적 게이트는 green (평가 임계·stale) · 평가 산출물 미생성 | `evaluate` |
+| 산출물결함 | 에이전트 페이즈의 **이번 사이클 결정 기록이 없음**(페이즈 산출물 계약) | 같은 페이즈 |
 
 ### `harness/gate-status.json` — 게이트 실측 결과
 
