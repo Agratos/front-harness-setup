@@ -20,7 +20,7 @@ import { pathToFileURL } from 'node:url';
 
 import { cycleIdOf, readState, stateFilePath } from './lib/state.mjs';
 import { checkPhaseContract, PHASE_CONTRACT } from './lib/phase-gate.mjs';
-import { acceptanceOf, checkAcCoverage, findStep, readPlan } from './lib/plan.mjs';
+import { acceptanceOf, allAcIds, checkAcCoverage, findStep, readPlan } from './lib/plan.mjs';
 
 /** 페이즈 순서 — 진행 막대를 그리기 위해 loop 와 동일하게 유지한다. */
 const PHASE_ORDER = ['decompose', 'design', 'implement', 'verify', 'evaluate', 'debate', 'merge'];
@@ -181,7 +181,7 @@ export function collect(repoRoot) {
 				: null;
 		const specPath = path.join(repoRoot, 'harness', 'eval-scenario.json');
 		const spec = existsSync(specPath) ? readJson(specPath) : null;
-		const cov = checkAcCoverage(planStep, spec);
+		const cov = checkAcCoverage(planStep, spec, { knownAcIds: allAcIds(plan) });
 		ac = {
 			present: true,
 			error: planError ?? null,

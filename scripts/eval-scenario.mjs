@@ -38,7 +38,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { checkAcCoverage, findStep, formatCoverage, readPlan } from './lib/plan.mjs';
+import { allAcIds, checkAcCoverage, findStep, formatCoverage, readPlan } from './lib/plan.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 import { teardownDevServer } from './lib/teardown.mjs';
 
@@ -132,7 +132,8 @@ export function preflight(opts, repoRoot) {
 		const idx = state?.currentStepIdx ?? 0;
 		const label = (state?.planSteps ?? [])[idx];
 		const { step: planStep } = findStep(plan, { label, idx });
-		const coverage = checkAcCoverage(planStep, spec);
+		// 계획 전체의 AC 집합을 함께 넘긴다 — 회귀 시나리오(다른 step 의 태그)를 오타로 오탐하지 않도록.
+		const coverage = checkAcCoverage(planStep, spec, { knownAcIds: allAcIds(plan) });
 		if (coverage.applicable && !coverage.ok) {
 			return {
 				ok: false,
