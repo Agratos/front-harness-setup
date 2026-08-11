@@ -30,7 +30,7 @@
 ### 협의 위임 모델 (PM 코디네이터 — `.claude/agents/pm.md`)
 
 1. **CEO 가 subset 선정**: 이번 페이즈에 투입할 에이전트 subset 을 `harness/decisions/<id>-roster.md` 에 근거와 함께 기록합니다 (`.claude/agents/ceo.md`).
-2. **PM 이 호출 (최대 동시 K=3)**: CEO 선정 subset 만, 한 번에 최대 3개 에이전트를 동시 호출합니다.
+2. **오케스트레이터가 호출 (최대 동시 K=3, PM 규약)**: CEO 선정 subset 만, 한 번에 최대 3개 에이전트를 동시 호출합니다. ⛔ **호출 주체는 항상 오케스트레이터(메인 세션)다** — 서브에이전트는 다른 서브에이전트를 못 부르므로, PM 서브에이전트에게 "역할들을 불러라"고 위임하면 호출 수단이 없어 **다른 역할의 발언을 지어내는 침묵 실패**가 난다. `.claude/agents/pm.md` 는 이 협의의 운영 규약이고, PM 서브에이전트는 수집이 끝난 기여의 중재·합성에만 쓴다.
 3. **주장:이유 증분 append**: 각 에이전트의 `주장:이유` 기여를 받는 즉시 `harness/decisions/<id>.md` 에 추가합니다 (배치 금지).
 4. **토론 페이즈는 매 단계 항상 실행합니다.** 이견이 없으면 1라운드(각 에이전트 `주장:이유` 1회 제출 + PM 합성)로 짧게 종결합니다. 이견이 있을 때만 반박 라운드를 추가로 진행합니다(최대 3 라운드).
 5. **합성**: 3 라운드 내 합의 시 최종 결론(타협안 + `why`)을 기록, 미합의 시 `[미합의 → CEO 에스컬레이션]`.
@@ -90,7 +90,7 @@
 > ⛔ **UI/UX 평가를 루브릭 숫자만으로 끝내지 않는다.** `eval-playwright.mjs` 는 `harness/evaluations/<id>/` 에 **`screenshot.png`(데스크톱)·`screenshot-mobile.png`(375px)·`dom.html`** 를 남긴다. 오케스트레이터는 evaluate 에서:
 >
 > 1. (코드가 수행) `eval-playwright.mjs` 로 루브릭 베이스라인 + 캡처물을 생성한다.
-> 2. **customer·ui·ux 에이전트가 그 `screenshot.png`(+모바일) 이미지를 `Read` 로 직접 "보고"(이미지가 렌더됨), `dom.html` 을 읽고** 레이아웃·여백(padding)·정렬·간격·시각 위계·반응형·사용 흐름·a11y 를 평가한다.
+> 2. **customer·quality·ux 에이전트가 그 `screenshot.png`(+모바일) 이미지를 `Read` 로 직접 "보고"(이미지가 렌더됨), `dom.html` 을 읽고** 레이아웃·여백(padding)·정렬·간격·시각 위계·반응형·사용 흐름·a11y 를 평가한다(투입 subset 은 `docs/agent-roster.md` 기준 — CEO 가 roster 에서 조정 가능).
 > 3. 그 시각/UX 판정을 `evaluations/<id>.json` 의 `score`·`complaints` 로 **반영**한다(시각/UX 결함 = minor~major). 루브릭("앱이 떴는가")은 **하한**일 뿐, "잘 보이는가·쓸 만한가"는 **캡처물을 본 에이전트**가 정한다.
 > 4. UI/UX 결함이 나오면 🚨 이슈 트래커 행 + 회의(§6)로 처리 → rework.
 >
@@ -103,7 +103,8 @@
 > 1. **프리플라이트**(0초, `eval-scenario --preflight`) — 스펙 존재·파싱 + **AC 커버리지**.
 >    실패하면 **게이트를 돌리지 않고** 즉시 차단한다(결정적 게이트 4종은 실측 15초, 실제 프로젝트면 1~2분).
 > 2. `done-gate --deterministic-only` (typecheck/lint/check-arch/test)
-> 3. `node scripts/eval-scenario.mjs --id=scen-<cycleId>` — 실제 조작 + 단언
+> 3. `node scripts/eval-scenario.mjs --id=scen-<cycleId>` — 실제 조작 + 단언.
+>    id 의 cycleId 는 `#` 를 **`-r` 로 치환**해 넣는다(예: `step-0#0` → `scen-step-0-r0`) — 드라이버·루브릭이 이 규칙으로 산출물을 찾으므로, 수동 실행 시 치환하지 않으면 E2E 를 통과하고도 major 불만이 생긴다.
 >
 > 단언이 하나라도 실패하면 전진을 차단한다(게이트 green + E2E 실패 = **구현결함** → `implement` 되돌림).
 > 스펙·AC 문제는 **설계결함** → `design` 되돌림. 오케스트레이터가 잊어버릴 수 있는 지점이 아니다.
@@ -197,7 +198,7 @@ node scripts/loop.mjs
 
 ## git 브랜치 라이프사이클 (사이클마다 브랜치)
 
-각 step(사이클)은 **독립 브랜치**에서 작업하고 통과 시에만 main 에 병합·push 한다 — **절대 main 에서 직접 작업하지 않는다**(`assertNotDirectMainWork` 가드).
+각 step(사이클)은 **독립 브랜치**에서 작업하고 통과 시에만 main 에 병합·push 한다 — **절대 main 에서 직접 작업하지 않는다**(`seed-main`/`start-step` 이 설치하는 `.git/hooks/pre-commit` 훅이 시드 이후 main 직접 커밋을 코드로 차단 — `git-flow.md` §직접 main 작업 차단).
 
 1. **시작(seed)**: `git-flow seed-main` — main 에 초기 시드 커밋(없을 때만, 멱등). `/start-project` 가 1회 수행.
 2. **스텝 시작(`decompose` 진입)**: `loop.mjs` 가 `git-flow start-step <nn> <slug>` 를 호출해 **`step/<nn>-<slug>` 브랜치를 생성·체크아웃**한다. 이후 design/implement/verify 는 모두 이 브랜치에서 일어난다.

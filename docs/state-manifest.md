@@ -156,11 +156,14 @@ wasInterrupted : lastExecutedPhaseSeq === phaseSeq  AND  committed === false
 
 ## (e) 로그 디렉터리 스키마
 
-하니스는 실행 중 산출물을 다음 디렉터리에 누적합니다. 각 디렉터리는 `.gitkeep` 으로 빈 상태에서도 추적됩니다.
+하니스는 실행 중 산출물을 다음 디렉터리에 누적합니다. 디렉터리는 커밋에 미리 존재하지 않아도
+됩니다 — 각 기록 함수(`lib/log.mjs`)와 CLI 가 쓰기 전에 `mkdirSync(recursive)` 로 생성합니다.
 
 ### `harness/decisions/` — 의사결정 로그
 
-쟁점별 토론·합의 기록입니다. 파일명 예: `<phaseSeq>-<주제-slug>.md`.
+쟁점별 토론·합의 기록입니다. 파일명(실제 규칙, `lib/log.mjs` `logDecision`): `decision-<seq 4자리>.md`
+(예: `decision-0001.md`, 기존 파일 수 기반 결정적 시퀀스). 그 외에 역할별 보조 산출물
+(`<id>-roster.md`(CEO), `<id>-arch.md`(architect))도 같은 디렉터리에 남습니다.
 
 | 키            | 설명                                                  |
 | ------------- | ----------------------------------------------------- |
@@ -194,7 +197,8 @@ JSON 형태 예:
 
 ### `harness/errors/` — 오류 로그
 
-실패/수정 기록입니다. 파일명 예: `<phaseSeq>-<오류-slug>.md`.
+실패/수정 기록입니다. 파일명(실제 규칙, `lib/log.mjs` `logError`): `<phase>-<seq 4자리>.md`
+(예: `verify-0001.md`, 기존 `.md` 파일 수 기반 결정적 시퀀스). 형식은 **마크다운**(JSON 아님).
 
 | 키             | 설명                     |
 | -------------- | ------------------------ |

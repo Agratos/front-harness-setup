@@ -4,7 +4,7 @@
 // 실제 harness-setup 저장소는 절대 변경하지 않습니다.
 // 성공: 'GITFLOW SELFTEST: PASS' 출력 + exit 0 / 실패: 실패 목록 + exit 1.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -289,6 +289,92 @@ function runEmptyMergeGuardTests() {
 	}
 }
 
+function runMainGuardHookTests() {
+	console.log('[7] main 가드 훅 — seed 이후 main 직접 커밋을 pre-commit 이 차단');
+	const dir = makeTempRepo(false);
+	try {
+		runGitFlow(dir, ['seed-main']);
+		const hookPath = path.join(dir, '.git', 'hooks', 'pre-commit');
+		check('seed-main 이 pre-commit 훅 설치', existsSync(hookPath));
+
+		// main 에서 직접 커밋 → 훅이 거부해야 한다 (예전엔 가드 함수만 있고 아무도 안 불러 통과했다)
+		writeFileSync(path.join(dir, 'direct.txt'), 'direct on main\n', 'utf8');
+		git(dir, ['add', '-A']);
+		let directBlocked = false;
+		try {
+			git(dir, ['commit', '-m', 'feat: direct main work']);
+		} catch {
+			directBlocked = true;
+		}
+		check('main 직접 커밋이 훅으로 거부됨', directBlocked);
+
+		// HARNESS_ALLOW_MAIN=1 은 의도적 우회로 허용
+		let bypassOk = false;
+		try {
+			execFileSync('git', ['commit', '-m', 'chore: 의도적 main 커밋'], {
+				cwd: dir,
+				stdio: 'pipe',
+				env: { ...process.env, HARNESS_ALLOW_MAIN: '1' },
+			});
+			bypassOk = true;
+		} catch {
+			bypassOk = false;
+		}
+		check('HARNESS_ALLOW_MAIN=1 우회 허용', bypassOk);
+
+		// step 브랜치 커밋은 훅 영향 없음 + merge-step 정상 경로(자동 병합 커밋)도 영향 없음
+		runGitFlow(dir, ['start-step', '01', 'hooked']);
+		writeFileSync(path.join(dir, 'w.txt'), 'work\n', 'utf8');
+		git(dir, ['add', '-A']);
+		let stepOk = false;
+		try {
+			git(dir, ['commit', '-m', 'feat: step work']);
+			stepOk = true;
+		} catch {
+			stepOk = false;
+		}
+		check('step 브랜치 커밋은 훅 통과', stepOk);
+		const merge = runGitFlow(dir, ['merge-step', '01', 'hooked', '--gate-ok']);
+		check('훅 설치 후 merge-step 정상 병합(exit 0)', merge.code === 0);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+function runMergeConflictAbortTests() {
+	console.log('[8] merge 충돌 시 abort — 반쯤 병합된 main 을 남기지 않는다');
+	const dir = makeTempRepo(false);
+	try {
+		runGitFlow(dir, ['seed-main']);
+		// step 브랜치에서 conflict.txt 를 A 로 커밋
+		runGitFlow(dir, ['start-step', '01', 'conflict']);
+		writeFileSync(path.join(dir, 'conflict.txt'), 'A\n', 'utf8');
+		git(dir, ['add', '-A']);
+		git(dir, ['commit', '-m', 'feat: step side']);
+		// main 에서 같은 파일을 B 로 커밋해 충돌 유발 (훅은 HARNESS_ALLOW_MAIN=1 로 의도적 우회)
+		git(dir, ['checkout', 'main']);
+		writeFileSync(path.join(dir, 'conflict.txt'), 'B\n', 'utf8');
+		git(dir, ['add', '-A']);
+		execFileSync('git', ['commit', '-m', 'chore: main side'], {
+			cwd: dir,
+			stdio: 'pipe',
+			env: { ...process.env, HARNESS_ALLOW_MAIN: '1' },
+		});
+		git(dir, ['checkout', 'step/01-conflict']);
+
+		const merge = runGitFlow(dir, ['merge-step', '01', 'conflict', '--gate-ok']);
+		check('충돌 병합 exit != 0', merge.code !== 0);
+		check('실패 메시지에 merge --abort 안내', /merge --abort/.test(merge.stderr));
+		// 예전엔 충돌 마커가 main 작업트리에 그대로 남아 다음 루프가 더티 트리에서 돌았다.
+		const status = git(dir, ['status', '--porcelain']);
+		check('충돌 후 작업트리 클린(abort 수행됨)', status === '');
+		check('충돌 후 step 브랜치로 복귀', currentBranch(dir) === 'step/01-conflict');
+		check('MERGE_HEAD 없음(병합 중단 완료)', !existsSync(path.join(dir, '.git', 'MERGE_HEAD')));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
 function main() {
 	console.log('=== git-flow selftest (임시 저장소에서만 실행) ===');
 	console.log(`temp base: ${os.tmpdir()}`);
@@ -299,6 +385,8 @@ function main() {
 		runRemoteFlowTests();
 		runNoRemotePushSkipTest();
 		runEmptyMergeGuardTests();
+		runMainGuardHookTests();
+		runMergeConflictAbortTests();
 	} catch (err) {
 		console.error('SELFTEST 예외:', err.message);
 		failures.push(`예외: ${err.message}`);

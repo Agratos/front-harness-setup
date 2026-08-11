@@ -14,7 +14,7 @@
 | **QA**             | `qa.md`             | typecheck/lint/test/check-arch 실행·판정·회귀 점검        | `harness/errors/`, `harness/evaluations/qa-<id>.md`                     |
 | **Quality**        | `quality.md`        | 성능 예산(Core Web Vitals) 및 접근성(a11y) 심화 점검, 로컬 빌드 검증, 번들 크기 분석, 릴리스 노트 작성 | `harness/evaluations/quality-<id>.md`, `harness/evaluations/release-notes-<id>.md` |
 | **Customer**       | `customer.md`       | 페르소나로 dev 서버 직접 사용(Playwright), 100점 채점 (기본 1 페르소나, 복잡 화면 시 2~3 페르소나) | `harness/evaluations/<id>.json` + `<id>.md` (done-gate 가 `.json` 소비) |
-| **Entity Modeler** | `entity-modeler.md` | API 문서 → FSD 엔티티 DTO/타입/매퍼/스토어 생성           | `src/entities/<entity>/{dto,types,mapper,store}/`                       |
+| **Entity Modeler** | `entity-modeler.md` | API 문서 → FSD 엔티티 DTO/타입/매퍼/스토어 생성           | `src/entities/<entity>/model/{dto,types,mapper,store}/`                 |
 
 ---
 

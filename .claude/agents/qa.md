@@ -17,7 +17,7 @@ typecheck / lint / test / check-arch (결정적 게이트)를 실행해 판정�
 
 - 시나리오 스펙 `harness/eval-scenario.json` 작성(decompose/페르소나에서 도출): 액션(`fill`/`select`/`click`) + **단언**(`textVisible`/`inputEmpty`/`inputValue`/`textGone`/`minCount`). 각 단언에는 `"ac": "AC-N"` 태그를 붙여 `harness/plan.json` 의 수용기준과 연결한다(AC 커버리지 — design 계약·verify 프리플라이트가 검사).
 - **반드시 포함할 단언**: 제출 후 폼 초기화(`inputEmpty`), 추가/토글/필터 후 목록·통계 반영, 상태 변경이 실제 적용되는지, 입력 검증(잘못된 값 거부).
-- 실행: `node scripts/eval-scenario.mjs --id=scen-<cycleId>`. 실패 단언 → **기능 결함(major)** 으로 `harness/errors/`·평가에 기록 → done-gate FAIL → rework.
+- 실행: `node scripts/eval-scenario.mjs --id=scen-<cycleId>` — 단, id 에 넣을 때 cycleId 의 `#` 는 **`-r` 로 치환**한다(예: `step-0#0` → `--id=scen-step-0-r0`. 파일명에 `#` 를 쓸 수 없고, 루브릭 `fn.e2e-verified` 와 loop 가 이 치환 규칙으로 산출물을 찾는다 — 치환 없이 실행하면 산출물이 엉뚱한 경로에 생겨 E2E 를 통과하고도 major 불만이 생긴다). 실패 단언 → **기능 결함(major)** 으로 `harness/errors/`·평가에 기록 → done-gate FAIL → rework.
 - **exit code 계약 (F15·F16 반전 — "스펙/서버 부재 시 차단 안 함" 이던 옛 동작은 폐지됨)**: **0** 통과 · 명시적 면제(`{"scenarios":[],"skipReason":"<이유>"}`) · 환경 부재(Playwright 미설치만) / **1** 단언 실패(구현결함 → `implement`) / **2** 검증 불가(스펙 없음·깨짐·빈 스펙 → `design`, dev 서버 미기동 → `implement`). **스펙·서버 부재는 skip 이 아니라 차단**이다 — skip 은 환경 부재에만 허용된다.
 - **스토리보드**: 러너가 **각 단계마다 화면을 캡처**(`evaluations/<id>/s<scn>-<step>.png`)한다 — 클릭→실제 변화(예: 토글 후 상태)를 시각 증거로 남겨 사용자 가이드처럼 flow 전체를 확인. `<id>/scenario.json` 의 `storyboard` 참조.
 - **🧪 테스트 관리 DB 기록(Notion)**: 매 사이클 각 테스트(결정적 게이트·상호작용·평가·단위)의 통과/실패를 허브의 `🧪 테스트 관리` DB 에 행으로 적는다(유형·상태·사이클 relation·결과). *"모든 기능이 테스트됐고 통과했나"* 를 한눈에. (`docs/notion-hub-layout.md §4`)
@@ -37,26 +37,29 @@ typecheck / lint / test / check-arch (결정적 게이트)를 실행해 판정�
 - 협의 발언: `주장 : 이유` 형식으로 PM에게 전달
 - 회귀 점검 보고서 (`harness/evaluations/qa-<id>.md`)
 
-**harness/errors 스키마 예시**
+**harness/errors 스키마** (`scripts/lib/log.mjs` 의 `logError` 가 단일 진실 공급원)
 
-```json
-{
-  "id": "err-<timestamp>",
-  "phase": "<현재 페이즈명>",
-  "tool": "typecheck | lint | test | check-arch",
-  "severity": "error | warning",
-  "file": "<파일 경로>",
-  "line": <줄 번호>,
-  "message": "<오류 메시지>",
-  "raw": "<원본 출력>"
-}
+- 형식: **마크다운** 파일 1건 = 오류 1건. JSON 이 아니다 — JSON 으로 쓰면 원장이 갈라진다.
+- 파일명: `<phase>-<seq 4자리>.md` (예: `verify-0001.md`). seq 는 디렉터리의 기존 `.md` 파일 수 기반(결정적) — 손으로 번호를 정하지 말고 기존 파일 수 + 1 을 따른다.
+- 필수 키(표): `phase` / `위치`(파일:라인 또는 명령어) / `오류메시지`(원문) / `원인`(근본 원인, 모르면 `TBD`) / `수정diff요약`(모르면 `TBD`).
+
+```markdown
+# 오류 로그 — verify-0001
+
+| 키 | 값 |
+| --- | --- |
+| phase | verify |
+| 위치 | yarn check:arch |
+| 오류메시지 | features/date-filter 가 shared 를 역방향 참조 |
+| 원인 | import 경로가 FSD 레이어 규칙 위반 |
+| 수정diff요약 | TBD |
 ```
 
 ## 사용 도구
 
 - **읽기**: `src/`, `harness/`(특히 `plan.json`), `package.json`, `tsconfig*.json`, `eslint.config.*`
 - **쓰기**: `harness/errors/`, `harness/evaluations/qa-<id>.md`
-- **실행**: `yarn typecheck`, `yarn lint`, `yarn test`, `yarn check:arch` (결정적 게이트) + `node scripts/eval-scenario.mjs`(상호작용/E2E) (또는 `npm run` 동등 명령)
+- **실행**: `yarn typecheck`, `yarn lint`, `yarn test:run`, `yarn check:arch` (결정적 게이트) + `node scripts/eval-scenario.mjs`(상호작용/E2E) (또는 `npm run` 동등 명령). ⚠️ `yarn test` 는 vitest **watch 모드**라 비대화형 세션에서 끝나지 않는다 — 반드시 `test:run` 을 쓴다(done-gate 도 `test:run` 을 실행).
 - **쓰기(추가)**: `harness/eval-scenario.json`(시나리오 스펙), `harness/evaluations/scen-<cycleId>/scenario.json`(결과 산출물 — 루브릭 `fn.e2e-verified` 가 읽음)
 
 ## 주장:이유 출력 포맷

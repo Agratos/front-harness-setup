@@ -38,6 +38,9 @@ node scripts/eval-playwright.mjs
 node scripts/eval-playwright.mjs --port=8000 --id=eval-0007
 
 # 결정적 테스트용 주입 (관찰과 무관하게 점수/major 덮어쓰기)
+# ⛔ 셀프테스트/CI 전용 — 자율 루프에서 사용 금지. 주입된 평가에는 bypass 표시가 남으며,
+#    점수가 안 나온다고 주입으로 통과시키는 것은 평가 무효(가짜 통과)다. 점수 정체는
+#    rework → 5회 초과 시 vote(주관 임계만 우회)가 정상 탈출구다.
 node scripts/eval-playwright.mjs --score=95 --major-complaints=0
 
 # 외부에서 띄운 서버에 붙기(서버 기동/종료 생략)
@@ -48,8 +51,8 @@ node scripts/eval-playwright.mjs --no-server --port=8000
 | ---------------------- | ----------------------------------- | ---------------- |
 | `--port=N`             | dev 서버 고정 포트                  | `8000`           |
 | `--id=ID`              | 평가 식별자(파일명)                 | `eval-NNNN` 자동 |
-| `--score=N`            | 종합 점수 주입(테스트/CI)           | (관찰 기반 산출) |
-| `--major-complaints=N` | major 불만 수 주입                  | (관찰 기반 산출) |
+| `--score=N`            | 종합 점수 주입 — ⛔ 셀프테스트/CI 전용, 자율 루프 사용 금지 | (관찰 기반 산출) |
+| `--major-complaints=N` | major 불만 수 주입 — ⛔ 셀프테스트/CI 전용, 자율 루프 사용 금지 | (관찰 기반 산출) |
 | `--no-server`          | 서버 기동·종료 생략(외부 서버 가정) | off              |
 
 ## 루브릭 (요약)
