@@ -23,6 +23,7 @@ import {
 	MAX_REWORK,
 	PHASE_ORDER,
 } from './loop.mjs';
+import { integrityOf } from './eval-review.mjs';
 import { specFingerprint } from './lib/plan.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 
@@ -806,6 +807,103 @@ try {
 } finally {
 	try {
 		rmSync(tmpJ, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
+// ── 시나리오 K: debate 판정 독립(세션 분리 2단계) — 주입 격리 + 격리 리뷰 근거 강제 ──
+console.log('');
+console.log('=== loop selftest K: debate 판정 독립(주입 격리·격리 리뷰 근거) ===');
+const tmpK = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-debate-'));
+try {
+	mkdirSync(path.join(tmpK, 'harness'), { recursive: true });
+	mkdirSync(path.join(tmpK, 'scripts'), { recursive: true });
+	writeFileSync(
+		path.join(tmpK, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }) + '\n',
+		'utf8',
+	);
+	// 평가 도구가 "존재"해야 무근거 기본값이 rework 다 (도구 부재는 환경 문제 → pass)
+	writeFileSync(path.join(tmpK, 'scripts', 'eval-playwright.mjs'), '// fixture: 평가 도구 존재 표시\n', 'utf8');
+	const debateState = () => ({
+		planSteps: ['01-x'],
+		currentStepIdx: 0,
+		phase: 'debate',
+		phaseSeq: 6,
+		lastExecutedPhaseSeq: 5,
+		status: 'running',
+		committed: false,
+		reworkCount: 0,
+		failures: {},
+		escalations: 0,
+		scores: {},
+	});
+	const invokeWithEnv = (env) => {
+		try {
+			const stdout = execFileSync('node', [loopScript], { cwd: tmpK, encoding: 'utf8', stdio: 'pipe', env });
+			return { code: 0, stdout };
+		} catch (err) {
+			return { code: err.status ?? 1, stdout: (err.stdout || '').toString() };
+		}
+	};
+
+	// (K-1) 주입은 셀프테스트/CI 밖에서 무시된다 — 격리 산출물 없이 pass 를 주입해도 rework
+	writeFileSync(path.join(tmpK, 'harness', 'state.json'), JSON.stringify(debateState()) + '\n', 'utf8');
+	const envNoTest = { ...process.env, HARNESS_DEBATE_OUTCOME: 'pass' };
+	delete envNoTest.HARNESS_SELFTEST;
+	delete envNoTest.CI;
+	const k1 = invokeWithEnv(envNoTest);
+	let stK = readState(stateFilePath(tmpK));
+	check('K: 테스트 환경 밖 주입(pass) 무시 → 무근거 rework(implement 회귀)', stK.phase === 'implement' && stK.reworkCount === 1);
+	check('K: 주입 무시 사유 로그(세션 분리 2단계)', /판정 주입.*무시/.test(k1.stdout));
+
+	// (K-2) 셀프테스트/CI 에서는 주입이 종전대로 유효 — 결정적 테스트 경로 유지
+	writeFileSync(path.join(tmpK, 'harness', 'state.json'), JSON.stringify(debateState()) + '\n', 'utf8');
+	invokeWithEnv({ ...process.env, HARNESS_DEBATE_OUTCOME: 'pass' }); // HARNESS_SELFTEST=1 상속
+	stK = readState(stateFilePath(tmpK));
+	check('K: 셀프테스트 env 에서 주입 pass → merge 전진', stK.phase === 'merge');
+
+	// (K-3) 격리 리뷰가 유효하지 않은 평가(스탬프 없음)는 판정 근거가 아니다
+	writeFileSync(path.join(tmpK, 'scripts', 'eval-review.mjs'), '// fixture: 리뷰 계약 활성 표시\n', 'utf8');
+	mkdirSync(path.join(tmpK, 'harness', 'evaluations'), { recursive: true });
+	writeFileSync(
+		path.join(tmpK, 'harness', 'evaluations', 'eval-0001.json'),
+		JSON.stringify({ id: 'eval-0001', cycleId: 'step-0#0', score: 100, majorComplaints: 0 }) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpK, 'harness', 'state.json'), JSON.stringify(debateState()) + '\n', 'utf8');
+	const k3 = invokeLoop(tmpK);
+	stK = readState(stateFilePath(tmpK));
+	check('K: 리뷰 스탬프 없는 100점 평가 → 근거 무효 → rework', stK.phase === 'implement' && stK.reworkCount === 1);
+	check('K: 근거 제외 사유 로그(격리 리뷰)', /격리 리뷰가 유효하지 않음/.test(k3.stdout));
+
+	// (K-4) 유효한 격리 리뷰 스탬프가 있으면 그 평가로 판정한다 (100/major 0 → pass)
+	const reviewed = {
+		id: 'eval-0002',
+		cycleId: 'step-0#0',
+		score: 100,
+		majorComplaints: 0,
+		dimensions: { ui: { score: 100, weight: 0.25 }, ux: { score: 100, weight: 0.2 }, fn: { score: 100, weight: 0.35 }, quality: { score: 100, weight: 0.2 } },
+		complaints: [],
+	};
+	writeFileSync(
+		path.join(tmpK, 'harness', 'evaluations', 'eval-0002.json'),
+		JSON.stringify({
+			...reviewed,
+			review: { mode: 'isolated', cmd: 'stub', at: '2026-08-12T00:00:00.000Z', added: { complaints: 0, loweredDimensions: [] }, integrity: integrityOf(reviewed) },
+		}) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpK, 'harness', 'state.json'), JSON.stringify(debateState()) + '\n', 'utf8');
+	invokeLoop(tmpK);
+	stK = readState(stateFilePath(tmpK));
+	check('K: 유효 스탬프 평가(100/major 0) → 히스테리시스 pass → merge', stK.phase === 'merge');
+} catch (err) {
+	failures.push(`K 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpK, { recursive: true, force: true });
 	} catch {
 		/* 정리 실패 무시 */
 	}

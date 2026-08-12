@@ -42,8 +42,8 @@
 
 | 단계 | 내용 | 상태 |
 | --- | --- | --- |
-| **1단계 — 채점 격리** | `eval-review.mjs`(격리 리뷰 스포너·스탬프 발급자) + `loop.mjs` evaluate 강제 배선 + `done-gate` 변조 탐지 | **이번 반영** |
-| 2단계 — debate 입력 제한 | debate 의 pass/rework 근거를 격리 산출물(평가 JSON + `review.json`)로 제한, 오케스트레이터 임의 판정 제거. 시행 7 로 격리 채점 효과 계측(격리 전후 점수 분포 대조) | 대기 |
+| **1단계 — 채점 격리** | `eval-review.mjs`(격리 리뷰 스포너·스탬프 발급자) + `loop.mjs` evaluate 강제 배선 + `done-gate` 변조 탐지 | ✅ 반영 (2026-08-11) |
+| **2단계 — debate 입력 제한** | debate 의 pass/rework 근거를 격리 산출물(격리 리뷰 스탬프가 **유효한** 평가 JSON)로 제한 — `resolveDebateOutcome` 이 `verifyEvalReview` 로 근거를 검증하고, 스탬프 없음·변조·수기 skip 은 근거 무효(무근거 기본값 규칙으로 폴백). `--debate`/`HARNESS_DEBATE_OUTCOME` 주입은 `HARNESS_SELFTEST=1`/CI 전용으로 격리(그 외 무시+로그). 시행 7 로 격리 채점 효과 계측(격리 전후 점수 분포 대조)은 남은 항목 | ✅ 반영 (2026-08-12) |
 | 3단계 — 계획/개발 세션 분리 | `loop.mjs` 가 이미 "한 호출 = 한 페이즈" 상태 기계이므로, 페이즈 그룹별 헤드리스 세션 러너(`run-phase-session.mjs`)가 decompose·design / implement / evaluate·debate 를 각각 fresh 세션으로 실행. 세션 지문(spawn id)을 record-decision 스탬프에 포함, phase-gate 가 "구현 세션 ≠ 채점 세션" 교차 검증 | 대기 |
 
 > 1단계를 채점부터 시작하는 이유: 품질 보증의 병목이 주관 점수의 독립성이고(시행 6의 96→100 이
@@ -136,3 +136,7 @@
 - 2026-08-12: 1단계 우회 구멍 3건 봉합(§4.3) — ① 리뷰 스탬프 있는 평가의 후행 `injected` 부착을 변조로 취급,
   ② `HARNESS_EVAL_SCORE/MAJOR` env 주입을 `HARNESS_SELFTEST=1`/CI 로 격리, ③ skip 스탬프를 검증 시점
   도구 가용성과 대조(수기 skip 위조 차단). 셀프테스트: eval-review [B8+/B9+], done-gate [8].
+- 2026-08-12: **2단계 반영** — debate 판정 주입(`--debate`/`HARNESS_DEBATE_OUTCOME`)을 셀프테스트/CI 로
+  격리하고, 파일 평가는 격리 리뷰 스탬프가 유효할 때만 판정 근거로 인정(`resolveDebateOutcome` 이
+  `verifyEvalReview` 재사용). 셀프테스트: loop [K]. 관련 보완(같은 날, step/37): design 확정 시
+  AC·시나리오 지문 동결(specFreeze) — "개발 세션이 테스트 기준을 사후 완화" 하는 경로 차단.
