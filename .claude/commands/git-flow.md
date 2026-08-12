@@ -101,6 +101,16 @@ node scripts/git-flow.mjs merge-step 01 login
 > ⛔ `--gate-ok`/`HARNESS_GATE_OK=1` 은 done-gate.mjs 가 **없는** 환경(셀프테스트 임시 저장소)의 폴백 전용이며,
 > done-gate.mjs 가 있으면 무시됩니다. **자율 루프에서 게이트 우회 목적으로 사용 금지.**
 
+## 원격 main 보호 (GitHub)
+
+- 원격 main 에는 **최소 보호**를 적용한다: force-push 차단 + 브랜치 삭제 차단, required check 없음.
+  (2026-08-12 `Agratos/harness-setup-test` 적용 — `gh api PUT .../branches/main/protection`)
+- **required status check / PR 필수를 걸지 않는 이유**: merge-step 은 로컬 done-gate 통과 후 main 을
+  **직접 push** 한다. 원격이 "체크 통과 커밋만 push 허용" 을 요구하면 push 시점엔 체크가 존재하지 않아
+  전부 거부되고, `pushIfRemote` 는 push 실패를 무시하므로 **로컬/원격 main 이 조용히 갈라진다**.
+  원격 게이트로 승격하려면 push 직행 대신 PR 경유(+CI 조건 auto-merge)로 플로우 자체를 바꿔야 한다 —
+  그 전환은 별도 결정 사항으로 남긴다(로컬 게이트가 1차 방어선, 원격 보호는 이력 보존 백스톱).
+
 ## useGit=false 우회
 
 `init-project` 에서 `useGit=false` 로 결정되면 `harness/config.json` 에 `skipGitFlow=true` 가 기록되며,

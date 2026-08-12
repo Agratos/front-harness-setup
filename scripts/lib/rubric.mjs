@@ -53,16 +53,22 @@ export const DIMENSIONS = [
 		label: '기능',
 		dimWeight: 0.35,
 		items: [
-			{ id: 'fn.app-mounts', weight: 30, severity: 'major', check: (o) => observedTrue(o.appMounted) },
-			{ id: 'fn.no-runtime-error', weight: 30, severity: 'major', check: (o) => observedZero(o.runtimeErrors) },
+			{ id: 'fn.app-mounts', weight: 20, severity: 'major', check: (o) => observedTrue(o.appMounted) },
+			{ id: 'fn.no-runtime-error', weight: 20, severity: 'major', check: (o) => observedZero(o.runtimeErrors) },
 			// ⭐ 상호작용 실증 (2차 자기진단 F18) — "떴는가" 가 아니라 **"조작했을 때 기대대로 됐는가"**.
 			// eval-scenario 가 남긴 이번 사이클 산출물(scenario.json)의 passed 를 읽는다.
 			// 이 항목이 없던 동안 루브릭 16항목 전부가 "렌더/에러/게이트" 였고, 그래서
 			// **기능 0개 빈 스캐폴드가 종합 100점 / major 0** 을 받았다(실측).
-			// 근본 해결(요구사항→AC→E2E 추적성)은 plan.json 이 필요하지만, 그 전에도
-			// "상호작용 단언이 실제로 통과했다" 는 사실은 점수에 반영돼야 한다.
-			{ id: 'fn.e2e-verified', weight: 30, severity: 'major', check: (o) => observedTrue(o.e2ePassed) },
-			{ id: 'fn.navigable', weight: 10, severity: 'minor', check: (o) => observedTrue(o.navigable) },
+			{ id: 'fn.e2e-verified', weight: 25, severity: 'major', check: (o) => observedTrue(o.e2ePassed) },
+			// ⭐⭐ AC 실증 (4순위 verdict) — 루브릭 **단일 최대 가중** 항목.
+			// "테스트가 통과했다" 가 아니라 **"사용자가 확정한 수용기준(AC)이 화면에서 증명됐다"** 를 채점한다.
+			// 입력은 eval-playwright 가 관찰: 이 step 의 모든 AC 가 단언으로 덮였고(plan↔scenario 커버리지)
+			// 그 단언들이 이번 사이클 E2E 에서 실제 통과했는가. 시행 6 이 AC 11/11 을 E2E 로 증명하고도
+			// 루브릭 점수에는 반영되지 않던 자인된 공백(PROGRESS 4순위)의 봉합이다.
+			// plan.json 이 없는 프로젝트는 명시 관찰값 acApplicable=false 로만 skip(환경 부재) —
+			// 미관찰(undefined)은 종전 원칙(F19)대로 통과가 아니다.
+			{ id: 'fn.ac-verified', weight: 30, severity: 'major', check: (o) => (o.acApplicable === false ? true : o.acVerified === true) },
+			{ id: 'fn.navigable', weight: 5, severity: 'minor', check: (o) => observedTrue(o.navigable) },
 		],
 	},
 	{
@@ -93,6 +99,7 @@ const OBSERVATION_KEY = {
 	'fn.app-mounts': 'appMounted',
 	'fn.no-runtime-error': 'runtimeErrors',
 	'fn.e2e-verified': 'e2ePassed',
+	'fn.ac-verified': 'acVerified',
 	'fn.navigable': 'navigable',
 	'q.gates-green': 'gatesGreen',
 	'q.screenshot': 'screenshotOk',

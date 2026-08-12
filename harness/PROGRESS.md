@@ -33,11 +33,20 @@
   - `--debate`/`HARNESS_DEBATE_OUTCOME` 주입을 셀프테스트/CI 로 격리(그 외 무시+로그).
   - 파일 평가는 **격리 리뷰 스탬프가 유효할 때만** 판정 근거(`verifyEvalReview` 재사용) —
     사양 `session-isolation-2026-08-11.md` 로드맵 2단계 반영(잔여: 시행 7 계측, 3단계 러너).
-- **검증**: 셀프테스트 18종 전원 PASS (신규: eval-review B8+/B9+, done-gate [8][9],
-  git-flow [9][10][11], loop [I][J][K], plan [B no-ac][D source][E]).
-- **다음 1개 행동**: 시행 7 (격리 채점·동결·최종 수용이 실물 프로젝트에서 발화하는지 계측) →
-  이후 세션 분리 3단계(`run-phase-session.mjs` 페이즈별 fresh 세션 러너) · 4순위(verdict.json AC 가중) ·
-  재개 루프 코드화(resume-watch) · 원격 main 보호(GitHub 설정 — 사용자 결정 필요).
+- **step/39~41 + 원격 (같은 세션 후속)**
+  - **세션 분리 3단계**: `run-phase-session.mjs`(격리 페이즈 세션 러너 — 페이즈별 도구 제한, 세션 지문
+    발급) + `record-decision` 지문 스탬프 + `phase-gate` "판정 세션 ≠ 설계/구현 세션" 교차 검증
+    (`sessionIsolation` 옵트인). 사양 로드맵 3/3 반영 완료.
+  - **재개 루프 코드화**: `resume-watch.mjs` — state.json 30분 stale 때만 인수, 잠금·blocked·러너
+    미가용에 불간섭, stuck 정지. `yarn resume:watch` / `--once`(cron).
+  - **4순위 verdict**: 루브릭에 `fn.ac-verified`(단일 최대 가중 30, major) — "모든 AC 가 단언으로
+    덮였고 E2E 로 증명됐는가" 를 채점. plan 없는 프로젝트는 명시 skip(acApplicable=false)만 허용.
+  - **원격 main 보호**: `Agratos/harness-setup-test` 에 force-push·삭제 차단 적용(required check 는
+    직접 push 플로우와 충돌해 보류 — git-flow.md §원격 main 보호에 트레이드오프 기록).
+- **검증**: 셀프테스트 20종 전원 PASS (신규: eval-review B8+/B9+, done-gate [8][9], git-flow [9][10][11],
+  loop [I][J][K], plan [B no-ac][D source][E], eval [B3], phase-gate [D], run-phase-session·resume-watch 신설).
+- **다음 1개 행동**: 시행 7 — 격리 채점·스펙 동결·최종 수용·AC 가중·세션 러너가 실물 프로젝트에서
+  발화하는지 계측(sessionIsolation=true 로) → 결과에 따라 세션 격리 기본 활성화 여부 결정.
 - **마지막 갱신**: 2026-08-12 (기록자: 성능분석 감사 반영 세션)
 
 ### 🟢 완료 — 세션 분리 1단계: **격리 채점** (계획·개발·채점 세션 분리 — 채점부터)
