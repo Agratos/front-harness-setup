@@ -26,7 +26,7 @@ import { pathToFileURL } from 'node:url';
 
 import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, stepIdOf, wasInterrupted, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
-import { verifyEvalReview } from './eval-review.mjs';
+import { reviewContractActive, verifyEvalReview } from './eval-review.mjs';
 import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
 import { acquireLock, releaseLock } from './lib/lock.mjs';
 import { logError } from './lib/log.mjs';
@@ -130,8 +130,8 @@ export function nextTransition(phase, currentStepIdx, stepCount) {
  * debate 페이즈의 결과(pass=통과 / rework=재작업)를 결정한다.
  * 우선순위:
  *   1) 명시 주입 — opts.debateOutcome 또는 env HARNESS_DEBATE_OUTCOME ('pass'|'rework'|'fail').
- *      (CI/테스트/오케스트레이터가 평가 결과를 직접 전달하는 경로)
- *   2) 최신 평가 파일 + 히스테리시스 임계(done-gate 와 동일 규칙)로 pass/rework 판정.
+ *      **셀프테스트/CI 전용**(HARNESS_SELFTEST=1 또는 CI) — 그 외 환경에서는 무시된다.
+ *   2) 최신 평가 파일(격리 리뷰 스탬프가 유효한 것만) + 히스테리시스 임계(done-gate 와 동일 규칙).
  *   3) 이번 사이클의 평가가 없으면 — **평가 도구가 있는데도 없으면 'rework'**, 도구 자체가 없으면 'pass'.
  *      (예전에는 무조건 'pass' 였다. "증거 없음"을 통과로 읽는 기본값이 '가짜 통과 0' 원칙과
  *       어긋났고, merge 의 done-gate 가 뒤늦게 탈락시켜 3회 왕복만 낭비했다 — 2차 자기진단 F20.
@@ -142,9 +142,20 @@ export function nextTransition(phase, currentStepIdx, stepCount) {
  * @returns {'pass'|'rework'}
  */
 export function resolveDebateOutcome(state, repoRoot, opts = {}) {
+	// 세션 분리 2단계(사양 §3): 판정 주입은 셀프테스트/CI 전용이다. 예전에는 오케스트레이터
+	// (구현을 지휘한 바로 그 세션)가 --debate/env 로 판정을 **최우선으로** 뒤집을 수 있었고,
+	// --score 주입과 달리 산출물에 노출도 되지 않았다(감사 발견). 이제 테스트 환경 밖에서는
+	// 무시하고 그 사실을 로그로 남긴다 — 판정 근거는 격리 산출물뿐이다.
 	const injected = opts.debateOutcome ?? process.env.HARNESS_DEBATE_OUTCOME;
-	if (injected === 'rework' || injected === 'fail') return 'rework';
-	if (injected === 'pass') return 'pass';
+	const injectionAllowed = process.env.HARNESS_SELFTEST === '1' || Boolean(process.env.CI);
+	if (injected !== undefined && injected !== null) {
+		if (injectionAllowed) {
+			if (injected === 'rework' || injected === 'fail') return 'rework';
+			if (injected === 'pass') return 'pass';
+		} else if (['pass', 'rework', 'fail'].includes(injected)) {
+			log(`debate: 판정 주입('${injected}') 무시 — 셀프테스트/CI 밖에서는 격리 산출물로만 판정한다(세션 분리 2단계)`);
+		}
+	}
 	/** 이번 사이클 평가가 없을 때의 기본값 — 산출물 부재는 rework, 환경(도구) 부재는 pass. */
 	const noEvidenceOutcome = () => {
 		if (existsSync(path.join(repoRoot, 'scripts', 'eval-playwright.mjs'))) {
@@ -170,6 +181,17 @@ export function resolveDebateOutcome(state, repoRoot, opts = {}) {
 				log(`debate: 평가 ${evaluation.id} 에 cycleId 스탬프 없음(구 형식) — 판정 근거에서 제외`);
 				return noEvidenceOutcome();
 			} else {
+				// 세션 분리 2단계: 판정 근거는 **격리 리뷰를 거친 평가**만이다. 스탬프 없음·변조·수기
+				// skip 은 근거 무효 — 리뷰 계약이 활성인 저장소에서 done-gate 와 같은 판정 함수를 쓴다
+				// (규칙을 두 곳에 적으면 반드시 어긋난다). 어차피 merge 의 done-gate 가 잡을 것을
+				// debate 가 먼저 잡아, 무근거 pass → merge 탈락 → 왕복 낭비를 없앤다.
+				if (reviewContractActive(repoRoot)) {
+					const rv = verifyEvalReview(repoRoot, evaluation.id);
+					if (!rv.ok) {
+						log(`debate: 평가 ${evaluation.id} 의 격리 리뷰가 유효하지 않음(${rv.reason}) — 판정 근거에서 제외`);
+						return noEvidenceOutcome();
+					}
+				}
 				const stepId = `step-${state.currentStepIdx ?? 0}`;
 				const wasLatched = !!(state?.scores?.[stepId]?.latched);
 				return evaluateHysteresis(evaluation, wasLatched).pass ? 'pass' : 'rework';

@@ -122,7 +122,7 @@ node scripts/record-decision.mjs --phase=debate \
 - 투표의 *내용*(다수결, 동률 시 CEO 캐스팅보트, 확정 3)은 에이전트가 수행하고 표 분포·결과를 decisions 에 기록합니다.
 - `vote` → `merge` 로 진행하며 `state.gateOverride=true` 가 done-gate 를 `--vote-override` 로 호출 → **주관 임계만 우회, 결정적 게이트는 유지**. 따라서 점수 정체로는 멈추지 않되 깨진 코드는 병합되지 않습니다.
 
-`debate` 결과는 평가 파일(`harness/evaluations/<id>.json`)의 히스테리시스 판정으로 자동 결정되며, 비대화형에서는 `--debate=pass|rework`(또는 env `HARNESS_DEBATE_OUTCOME`)로 주입할 수 있습니다.
+`debate` 결과는 평가 파일(`harness/evaluations/<id>.json`)의 히스테리시스 판정으로 자동 결정됩니다 — 단, **격리 리뷰 스탬프가 유효한 평가만** 판정 근거로 인정됩니다(세션 분리 2단계). `--debate=pass|rework`(또는 env `HARNESS_DEBATE_OUTCOME`) 주입은 **셀프테스트/CI 전용**(`HARNESS_SELFTEST=1` 또는 CI)이며, 그 외 환경에서는 무시되고 로그가 남습니다.
 
 ---
 

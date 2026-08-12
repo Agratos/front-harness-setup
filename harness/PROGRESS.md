@@ -7,6 +7,35 @@
 
 ## 현재 상태
 
+### 🟢 완료 — 성능분석 감사 반영: 게이트 봉합 + 계획 무결성 + 세션 분리 2단계 (step/36~38)
+
+- **배경**: 4대 요구사항(문답형 계획 / 계획·개발·테스트 세션 분리 / 브랜치→통과→main / 완성까지 반복)
+  대비 전수 감사에서 우회 구멍·미배선 지점을 발견 → 3개 step 브랜치로 반영, 각각 main 병합.
+- **step/36 — 게이트 우회 구멍 5건 봉합** (`2695a00`)
+  - eval-review: 리뷰 스탬프 있는 평가의 후행 `injected` 부착 = 변조 취급 / 수기 skip 스탬프를
+    검증 시점 도구 가용성과 대조해 무효화 / `HARNESS_EVAL_SCORE` env 주입을 `HARNESS_SELFTEST=1`·CI 로 격리.
+  - git-flow merge-step: state.json 의 **현재 step 만 병합**(예외는 `--any-step` 명시) /
+    main 전진 시 병합 결과 트리 **재게이트 + 실패 시 ORIG_HEAD 롤백** / 기존 pre-commit 훅에
+    main 가드 **체이닝**(경고만 남기고 포기하던 것을 강제로).
+- **step/37 — 계획 무결성 게이트 4종** (`820ed4c`)
+  - **스펙 동결(specFreeze)**: design 확정 시 AC+시나리오 정규화 지문을 동결 — implement 이후
+    기준 완화를 verify(0초 대조)·done-gate(백스톱, vote-override 로도 우회 불가)가 차단.
+  - **최종 수용 게이트**: 모든 step 병합 후에도 acceptance 미작성 step·미검증 AC 가 있으면
+    `done` 으로 위장하지 않고 blocked + 사유 (감사 리스크 A-4·A-5 봉합).
+  - **no-ac 차단**: 현재 step 의 acceptance 가 비면 preflight 검증 불가(→design).
+  - **init 격리 + source 필수화**: 구식 `--init` 라벨 시드는 셀프테스트/CI 전용,
+    plan.source(인터뷰 문서)는 필드+실존 검사 — 인터뷰 없이 지어낸 계획의 시드 차단.
+- **step/38 — 세션 분리 2단계: debate 판정 독립**
+  - `--debate`/`HARNESS_DEBATE_OUTCOME` 주입을 셀프테스트/CI 로 격리(그 외 무시+로그).
+  - 파일 평가는 **격리 리뷰 스탬프가 유효할 때만** 판정 근거(`verifyEvalReview` 재사용) —
+    사양 `session-isolation-2026-08-11.md` 로드맵 2단계 반영(잔여: 시행 7 계측, 3단계 러너).
+- **검증**: 셀프테스트 18종 전원 PASS (신규: eval-review B8+/B9+, done-gate [8][9],
+  git-flow [9][10][11], loop [I][J][K], plan [B no-ac][D source][E]).
+- **다음 1개 행동**: 시행 7 (격리 채점·동결·최종 수용이 실물 프로젝트에서 발화하는지 계측) →
+  이후 세션 분리 3단계(`run-phase-session.mjs` 페이즈별 fresh 세션 러너) · 4순위(verdict.json AC 가중) ·
+  재개 루프 코드화(resume-watch) · 원격 main 보호(GitHub 설정 — 사용자 결정 필요).
+- **마지막 갱신**: 2026-08-12 (기록자: 성능분석 감사 반영 세션)
+
 ### 🟢 완료 — 세션 분리 1단계: **격리 채점** (계획·개발·채점 세션 분리 — 채점부터)
 
 - **브랜치**: `step/34-session-isolation` → main
