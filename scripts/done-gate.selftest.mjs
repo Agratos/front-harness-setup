@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { runDoneGate, evaluateHysteresis, readGateStatus, writeGateStatus, ENTER_THRESHOLD, HOLD_THRESHOLD } from './done-gate.mjs';
+import { specFingerprint } from './lib/plan.mjs';
 import { defaultState, readState, stateFilePath, writeState } from './lib/state.mjs';
 
 const failures = [];
@@ -193,6 +194,37 @@ try {
 			else process.env[k] = v;
 		}
 		rmSync(tmpEnv, { recursive: true, force: true });
+	}
+
+	// 9) 스펙 동결 백스톱 — design 확정 이후 AC/시나리오 변경은 **vote-override 로도** 병합되지 않는다.
+	const tmpFreeze = mkdtempSync(path.join(os.tmpdir(), 'donegate-freeze-'));
+	try {
+		mkdirSync(path.join(tmpFreeze, 'harness'), { recursive: true });
+		writeFileSync(
+			path.join(tmpFreeze, 'harness', 'plan.json'),
+			JSON.stringify({ steps: [{ label: '01-x', acceptance: [{ id: 'AC-1', text: '보인다' }] }] }, null, 2) + '\n',
+			'utf8',
+		);
+		writeFileSync(
+			path.join(tmpFreeze, 'harness', 'eval-scenario.json'),
+			JSON.stringify({ scenarios: [{ name: 's', ac: 'AC-1', steps: [{ assert: 'textVisible', text: 'x' }] }] }, null, 2) + '\n',
+			'utf8',
+		);
+		const freezeSeed = (hash) => {
+			const st = defaultState(['01-x']);
+			st.status = 'running';
+			st.phase = 'merge';
+			st.specFreeze = { stepId: 'step-0', cycleId: 'step-0#0', hash };
+			writeState(stateFilePath(tmpFreeze), st);
+		};
+		freezeSeed('위조된-지문');
+		const rFrozen = runDoneGate({ json: true, skipDeterministic: true, voteOverride: true }, tmpFreeze);
+		check('[9] 동결 지문 불일치 → vote-override 로도 FAIL(exit 1)', rFrozen.exitCode === 1 && rFrozen.result.specFreeze?.ok === false);
+		freezeSeed(specFingerprint(tmpFreeze, { label: '01-x', idx: 0 }).hash);
+		const rFrozenOk = runDoneGate({ json: true, skipDeterministic: true, voteOverride: true }, tmpFreeze);
+		check('[9] 동결 지문 일치 → 통과(exit 0) + specFreeze.ok 기록', rFrozenOk.exitCode === 0 && rFrozenOk.result.specFreeze?.ok === true);
+	} finally {
+		rmSync(tmpFreeze, { recursive: true, force: true });
 	}
 } catch (err) {
 	failures.push(`예외: ${err && err.stack ? err.stack : String(err)}`);

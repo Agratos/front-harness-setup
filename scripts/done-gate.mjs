@@ -33,6 +33,7 @@ import { pathToFileURL } from 'node:url';
 
 import { cycleIdOf, readState, stateFilePath, stepIdOf, writeState } from './lib/state.mjs';
 import { logError } from './lib/log.mjs';
+import { specFingerprint } from './lib/plan.mjs';
 import { reviewContractActive, verifyEvalReview } from './eval-review.mjs';
 
 export const ENTER_THRESHOLD = 90; // 진입(enter) 임계치 — 이 이상이어야 새로 통과
@@ -335,6 +336,29 @@ export function runDoneGate(opts, repoRoot) {
 		return { exitCode: result.deterministic.passed ? 0 : 1, result };
 	}
 
+	// 스펙 동결 백스톱 — design 확정 시점의 AC·상호작용 스펙 지문(state.specFreeze)과 대조한다.
+	// 주관 임계와 무관한 **결정적** 검사이므로 vote-override 보다 먼저 둔다(투표로도 우회 불가).
+	// 1차 방어선은 verify 의 동결 대조 — 여기는 병합 직전의 마지막 확인이다.
+	{
+		const stEarly = readState(stateFilePath(repoRoot));
+		const frozen = stEarly?.specFreeze;
+		if (frozen && frozen.stepId === stepIdOf(stEarly)) {
+			const now = specFingerprint(repoRoot, {
+				label: (stEarly.planSteps ?? [])[stEarly.currentStepIdx ?? 0],
+				idx: stEarly.currentStepIdx ?? 0,
+			});
+			if (now.present && now.hash !== frozen.hash) {
+				result.specFreeze = {
+					ok: false,
+					reason: '스펙 동결 위반 — design 확정 이후 AC/상호작용 스펙이 변경됨(정당한 변경은 design 재진입으로 재동결)',
+				};
+				result.passed = false;
+				return { exitCode: 1, result };
+			}
+			result.specFreeze = { ok: true };
+		}
+	}
+
 	// 투표 오버라이드: 재작업 5회(MAX_REWORK) 초과 후 에이전트 투표가 진행을 의결한 경우.
 	// 결정적 게이트는 위에서 이미 통과를 확인했고(미통과면 조기 return), 주관 평가 임계만 대체한다.
 	// → 깨진 코드(타입/린트/테스트/아키텍처 위반)는 절대 병합되지 않으면서도,
@@ -446,6 +470,9 @@ function printHuman(result) {
 	}
 	if (result.hysteresis) {
 		console.log(`히스테리시스: ${result.hysteresis.pass ? 'PASS' : 'FAIL'} (latched=${result.hysteresis.latched}) — ${result.hysteresis.reason}`);
+	}
+	if (result.specFreeze && !result.specFreeze.ok) {
+		console.log(`스펙 동결: FAIL — ${result.specFreeze.reason}`);
 	}
 	if (result.bypass) {
 		// 우회 통과를 조용히 지나치지 않는다 — 실측 통과와 구분되게 표시한다.

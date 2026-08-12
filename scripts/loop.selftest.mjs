@@ -23,11 +23,16 @@ import {
 	MAX_REWORK,
 	PHASE_ORDER,
 } from './loop.mjs';
+import { specFingerprint } from './lib/plan.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptsDir = path.dirname(__filename);
 const loopScript = path.join(scriptsDir, 'loop.mjs');
+
+// 셀프테스트 표식 — env 게이트(구식 --init 라벨 시드 등)가 **명시적으로** 열린다.
+// invokeLoop 의 자식 프로세스는 process.env 를 상속하므로 여기 한 곳이면 충분하다.
+process.env.HARNESS_SELFTEST = '1';
 
 const failures = [];
 function check(label, cond) {
@@ -681,6 +686,126 @@ try {
 } finally {
 	try {
 		rmSync(tmpH, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
+// ── 시나리오 I: 스펙 동결 — design 확정 이후 AC/시나리오 변경을 verify 가 잡는다 ──
+console.log('');
+console.log('=== loop selftest I: 스펙 동결(specFreeze) 대조 ===');
+const tmpI = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-freeze-'));
+try {
+	mkdirSync(path.join(tmpI, 'harness'), { recursive: true });
+	writeFileSync(
+		path.join(tmpI, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }) + '\n',
+		'utf8',
+	);
+	writeFileSync(
+		path.join(tmpI, 'harness', 'plan.json'),
+		JSON.stringify({ steps: [{ label: '01-x', acceptance: [{ id: 'AC-1', text: '보인다' }] }] }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(
+		path.join(tmpI, 'harness', 'eval-scenario.json'),
+		JSON.stringify({ scenarios: [{ name: 's', ac: 'AC-1', steps: [{ assert: 'textVisible', text: 'x' }] }] }, null, 2) + '\n',
+		'utf8',
+	);
+	const freezeState = (hash) => ({
+		planSteps: ['01-x'],
+		currentStepIdx: 0,
+		phase: 'verify',
+		phaseSeq: 4,
+		lastExecutedPhaseSeq: 3,
+		status: 'running',
+		committed: false,
+		reworkCount: 0,
+		failures: {},
+		escalations: 0,
+		scores: {},
+		specFreeze: { stepId: 'step-0', cycleId: 'step-0#0', hash },
+	});
+
+	// (I-1) design 시점과 다른 지문 → 스펙 동결 위반으로 verify 가 차단(재시도 1/3)
+	writeFileSync(path.join(tmpI, 'harness', 'state.json'), JSON.stringify(freezeState('위조된-지문')) + '\n', 'utf8');
+	const i1 = invokeLoop(tmpI);
+	let stI = readState(stateFilePath(tmpI));
+	check('I: 동결 지문 불일치 → verify 에서 전진 차단', stI.phase === 'verify' && (stI.failures?.verify ?? 0) === 1);
+	check('I: 스펙 동결 위반 사유 노출', /스펙 동결 위반/.test(i1.stdout));
+	check('I: 설계결함 분류(재시도 한도 후 design 으로)', /design/.test(i1.stdout));
+
+	// (I-2) 실제 지문으로 동결하면 verify 는 통과한다 (임시 cwd — 게이트 도구 부재는 종전대로 skip)
+	const fp = specFingerprint(tmpI, { label: '01-x', idx: 0 });
+	check('I: specFingerprint 는 plan 이 있으면 present=true', fp.present === true && typeof fp.hash === 'string');
+	writeFileSync(path.join(tmpI, 'harness', 'state.json'), JSON.stringify(freezeState(fp.hash)) + '\n', 'utf8');
+	invokeLoop(tmpI);
+	stI = readState(stateFilePath(tmpI));
+	check('I: 동결 지문 일치 → verify 통과(evaluate 로 전진)', stI.phase === 'evaluate');
+} catch (err) {
+	failures.push(`I 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpI, { recursive: true, force: true });
+	} catch {
+		/* 정리 실패 무시 */
+	}
+}
+
+// ── 시나리오 J: 최종 수용 게이트 — 모든 step 병합 후에도 계획 전체가 덮여야 done ──
+console.log('');
+console.log('=== loop selftest J: 최종 수용 게이트(checkFinalAcceptance) ===');
+const tmpJ = mkdtempSync(path.join(os.tmpdir(), 'loop-selftest-final-'));
+try {
+	mkdirSync(path.join(tmpJ, 'harness'), { recursive: true });
+	writeFileSync(
+		path.join(tmpJ, 'harness', 'config.json'),
+		JSON.stringify({ useGit: false, useMcp: false, mcpServers: [], skipGitFlow: true }) + '\n',
+		'utf8',
+	);
+	writeFileSync(
+		path.join(tmpJ, 'harness', 'plan.json'),
+		JSON.stringify({ steps: [{ label: '01-x', acceptance: [{ id: 'AC-1', text: '보인다' }] }] }, null, 2) + '\n',
+		'utf8',
+	);
+	const mergeState = () => ({
+		planSteps: ['01-x'],
+		currentStepIdx: 0,
+		phase: 'merge',
+		phaseSeq: 7,
+		lastExecutedPhaseSeq: 6,
+		status: 'running',
+		committed: false,
+		reworkCount: 0,
+		failures: {},
+		escalations: 0,
+		scores: {},
+	});
+
+	// (J-1) AC-1 을 덮는 단언이 없음 → done 으로 위장하지 않고 blocked + 이유
+	writeFileSync(path.join(tmpJ, 'harness', 'eval-scenario.json'), JSON.stringify({ scenarios: [], skipReason: '면제 주장' }) + '\n', 'utf8');
+	writeFileSync(path.join(tmpJ, 'harness', 'state.json'), JSON.stringify(mergeState()) + '\n', 'utf8');
+	const j1 = invokeLoop(tmpJ);
+	let stJ = readState(stateFilePath(tmpJ));
+	check('J: 미검증 AC 존재 → status=blocked (done 위장 금지)', stJ.status === 'blocked');
+	check('J: blockedReason 에 최종 수용 사유', /최종 수용/.test(stJ.blockedReason ?? ''));
+	check('J: exit 3 (blocked 비정상 종료)', j1.code === 3);
+
+	// (J-2) 모든 AC 가 덮이면 done 으로 마감한다
+	writeFileSync(
+		path.join(tmpJ, 'harness', 'eval-scenario.json'),
+		JSON.stringify({ scenarios: [{ name: 's', ac: 'AC-1', steps: [{ assert: 'textVisible', text: 'x' }] }] }, null, 2) + '\n',
+		'utf8',
+	);
+	writeFileSync(path.join(tmpJ, 'harness', 'state.json'), JSON.stringify(mergeState()) + '\n', 'utf8');
+	const j2 = invokeLoop(tmpJ);
+	stJ = readState(stateFilePath(tmpJ));
+	check('J: 전 AC 덮임 → status=done 정상 마감', stJ.status === 'done' && j2.code === 0);
+} catch (err) {
+	failures.push(`J 예외: ${err && err.stack ? err.stack : String(err)}`);
+} finally {
+	try {
+		rmSync(tmpJ, { recursive: true, force: true });
 	} catch {
 		/* 정리 실패 무시 */
 	}

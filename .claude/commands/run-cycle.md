@@ -42,7 +42,7 @@
 | 페이즈      | 주도         | 산출/행위                                                                             |
 | ----------- | ------------ | ------------------------------------------------------------------------------------- |
 | `decompose` | 에이전트     | step 분해(`harness/decisions/<id>.md`). **진입 시 드라이버가 `git-flow start-step` 으로 step 브랜치 생성**                              |
-| `design`    | 에이전트     | 설계·구조 결정 (architect 중심) + ADR. **⛔ 수용기준(AC)과 그것을 검증하는 상호작용 스펙을 여기서 확정한다** — `harness/plan.json` 의 `acceptance[]` + `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"` 태그). verify 의 스펙·AC 문제는 이 페이즈로 되돌아온다 |
+| `design`    | 에이전트     | 설계·구조 결정 (architect 중심) + ADR. **⛔ 수용기준(AC)과 그것을 검증하는 상호작용 스펙을 여기서 확정한다** — `harness/plan.json` 의 `acceptance[]` + `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"` 태그). verify 의 스펙·AC 문제는 이 페이즈로 되돌아온다. **확정 시점에 드라이버가 AC·시나리오 지문을 동결(`state.specFreeze`)** — implement 이후 기준을 완화하면 verify/done-gate 가 차단하고, 정당한 변경은 design 재진입으로만 재동결된다 |
 | `implement` | 에이전트     | 코드 구현 (ui/entity-modeler 등).                                                     |
 | `verify`    | **드라이버** | ①프리플라이트(스펙·AC 커버리지, 0초) → ②`done-gate --deterministic-only` → ③`eval-scenario`(실제 조작). |
 | `evaluate`  | **드라이버+격리 세션** | 드라이버가 `eval-playwright`(캡처물+베이스라인) → **`eval-review`(격리 채점 세션)** 를 실행. 주관 조정은 격리 세션만 수행하며, 이번 사이클 산출물+리뷰 스탬프 없으면 차단. ⛔ 오케스트레이터·서브에이전트는 `<id>.json` 의 score·complaints 를 **편집 금지**(리뷰 후 변조는 done-gate FAIL). |
