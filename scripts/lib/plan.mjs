@@ -29,12 +29,21 @@
 //       }
 //     ]
 //   }
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+
+// 정규화 JSON 은 eval-review 의 canonicalize 하나만 쓴다 — 해시 규칙을 두 곳에 적으면 반드시 어긋난다.
+import { canonicalize } from '../eval-review.mjs';
 
 /** harness/plan.json 경로. */
 export function planPath(repoRoot) {
 	return path.join(repoRoot, 'harness', 'plan.json');
+}
+
+/** harness/eval-scenario.json (상호작용 스펙 정본) 경로. */
+export function scenarioSpecPath(repoRoot) {
+	return path.join(repoRoot, 'harness', 'eval-scenario.json');
 }
 
 /**
@@ -226,8 +235,70 @@ export function formatCoverage(cov) {
 	return head + miss + other + unk;
 }
 
+/** 상호작용 스펙 파일을 파싱해 반환 (없거나 깨지면 null — 지문/최종 검사는 null 도 입력으로 취급). */
+function readScenarioSpec(repoRoot) {
+	try {
+		return JSON.parse(readFileSync(scenarioSpecPath(repoRoot), 'utf8'));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * 스펙 지문 — 현재 step 의 수용기준(AC) + 상호작용 스펙(eval-scenario.json) 전체의 정규화 sha256.
+ *
+ * 왜 필요한가: AC 와 E2E 단언을 확정하는 세션(design)이 곧 구현을 지휘하는 세션이라,
+ * 구현이 어려우면 **같은 세션이 검증 기준을 사후 완화**해도 탐지 장치가 없었다(감사 발견 —
+ * phase-gate 는 커버리지의 '존재'만 검사하지 '불변'은 검사하지 않는다). design 이 확정 시점에
+ * 이 지문을 동결(state.specFreeze)로 남기고, verify 와 done-gate 가 대조한다.
+ * 정당한 기준 변경은 design 재진입(재설계)으로만 — 그때 지문이 재동결된다.
+ *
+ * @param {string} repoRoot
+ * @param {{label?:string, idx?:number}} where 현재 step (findStep 규칙과 동일)
+ * @returns {{present:boolean, hash:string|null}} plan.json 이 없으면 present=false(동결 비활성)
+ */
+export function specFingerprint(repoRoot, where = {}) {
+	const { present, plan, error } = readPlan(repoRoot);
+	if (!present || error || !plan) return { present: false, hash: null };
+	const { step } = findStep(plan, where);
+	const core = { acceptance: acceptanceOf(step), scenario: readScenarioSpec(repoRoot) };
+	return { present: true, hash: createHash('sha256').update(canonicalize(core), 'utf8').digest('hex') };
+}
+
+/**
+ * 최종 수용 검사 — 모든 step 을 병합했다고 끝내기 전에, **계획 전체**가 검증으로 덮였는지 본다.
+ *
+ * 왜 필요한가: step 게이트는 "그 step 에 선언된 AC" 만 본다. 그래서 두 구멍이 남았다(감사 발견):
+ *   ① acceptance 를 끝내 채우지 않은 step(후행 step 은 경고만)은 AC 검사 없이 완주한다
+ *   ② `status=done` = "모든 step 이 merge 됨" 일 뿐, 사용자 목적 전체의 달성 검사가 없다
+ * ①과 "선언됐지만 미검증인 AC" 는 여기서 결정적으로 잡는다. (step 분해 자체가 인터뷰 목표를
+ * 빠뜨린 경우는 코드가 알 수 없다 — gaps 가 비어도 인터뷰 문서 대조는 별도 리뷰의 몫이다.)
+ *
+ * @param {string} repoRoot
+ * @returns {{applicable:boolean, ok:boolean, gaps:string[]}} plan.json 없으면 applicable=false(하위호환)
+ */
+export function checkFinalAcceptance(repoRoot) {
+	const { present, plan, error } = readPlan(repoRoot);
+	if (!present) return { applicable: false, ok: true, gaps: [] };
+	if (error || !plan) return { applicable: true, ok: false, gaps: [`plan.json 읽기 실패 — ${error ?? '형식 오류'}`] };
+	const spec = readScenarioSpec(repoRoot);
+	const known = allAcIds(plan);
+	const gaps = [];
+	(plan.steps ?? []).forEach((step, i) => {
+		const label = step?.label ?? `steps[${i}]`;
+		if (acceptanceOf(step).length === 0) {
+			gaps.push(`"${label}": acceptance 미작성(design 에서 끝내 채워지지 않음)`);
+			return;
+		}
+		const cov = checkAcCoverage(step, spec, { knownAcIds: known });
+		if (!cov.ok) gaps.push(`"${label}": AC 미검증 — ${cov.missing.join(', ')}`);
+	});
+	return { applicable: true, ok: gaps.length === 0, gaps };
+}
+
 export default {
 	planPath,
+	scenarioSpecPath,
 	readPlan,
 	validatePlan,
 	findStep,
@@ -236,4 +307,6 @@ export default {
 	coveredAcIds,
 	checkAcCoverage,
 	formatCoverage,
+	specFingerprint,
+	checkFinalAcceptance,
 };

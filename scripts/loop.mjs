@@ -24,14 +24,14 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, wasInterrupted, writeState } from './lib/state.mjs';
+import { advancePhase, cycleIdOf, defaultState, markCommitted, needsRerun, readState, stateFilePath, stepIdOf, wasInterrupted, writeState } from './lib/state.mjs';
 import { evaluateHysteresis, loadLatestEvaluation, readGateStatus } from './done-gate.mjs';
 import { verifyEvalReview } from './eval-review.mjs';
 import { EXIT_UNVERIFIABLE } from './eval-scenario.mjs';
 import { acquireLock, releaseLock } from './lib/lock.mjs';
 import { logError } from './lib/log.mjs';
 import { checkPhaseContract, codeFingerprint, PHASE_CONTRACT } from './lib/phase-gate.mjs';
-import { planPath, validatePlan } from './lib/plan.mjs';
+import { checkFinalAcceptance, planPath, specFingerprint, validatePlan } from './lib/plan.mjs';
 
 // step 당 페이즈 순서. merge 다음은 (다음 step 의) decompose 로 래핑한다.
 export const PHASE_ORDER = ['decompose', 'design', 'implement', 'verify', 'evaluate', 'debate', 'merge'];
@@ -272,7 +272,8 @@ export function classifyFailure(phase, gateStatus, detail = {}) {
 		// 스펙/수용기준(AC) 문제는 **설계 산출물의 결함**이다 — 무엇을 만족해야 끝인지가 정의되지 않았다.
 		// ac-uncovered: AC 는 선언됐는데 그것을 증명하는 단언이 없다(= 검증 계획의 공백).
 		// exempt-with-ac: 면제를 선언했는데 AC 가 있다(= 계획과 검증이 서로 모순).
-		const specProblem = ['no-spec', 'bad-spec', 'empty-spec', 'ac-uncovered', 'bad-plan', 'exempt-with-ac'].includes(
+		// no-ac: AC 자체가 비어 있다(후행 step 미작성). spec-frozen: design 확정 이후 기준이 변경됐다.
+		const specProblem = ['no-spec', 'bad-spec', 'empty-spec', 'ac-uncovered', 'bad-plan', 'exempt-with-ac', 'no-ac', 'spec-frozen'].includes(
 			detail.unverifiable,
 		);
 		if (specProblem) {
@@ -403,6 +404,26 @@ function runNode(args, repoRoot) {
  */
 function runDeterministicPhase(phase, state, repoRoot) {
 	if (phase === 'verify') {
+		// ── ⓪ 스펙 동결 대조 (0초, 파일 읽기만) — design 확정 이후의 기준 완화를 잡는다.
+		// AC·상호작용 스펙을 확정한 세션이 곧 구현을 지휘하는 세션이라, 구현이 어려우면 같은 세션이
+		// 기준을 사후 완화해도 탐지 장치가 없었다(감사 발견). design 이 남긴 지문과 대조하고,
+		// 어긋나면 설계결함으로 design 에 되돌린다 — 정당한 변경은 그 재설계에서 재동결된다.
+		const frozen = state.specFreeze;
+		if (frozen && frozen.stepId === stepIdOf(state)) {
+			const now = specFingerprint(repoRoot, {
+				label: (state.planSteps ?? [])[state.currentStepIdx ?? 0],
+				idx: state.currentStepIdx ?? 0,
+			});
+			if (now.present && now.hash !== frozen.hash) {
+				return {
+					ok: false,
+					e2e: 'unverifiable',
+					unverifiable: 'spec-frozen',
+					note: '스펙 동결 위반 — design 확정 이후 AC/상호작용 스펙이 변경됨(정당한 변경은 design 재진입으로 재동결)',
+				};
+			}
+		}
+
 		const scenPre = path.join(repoRoot, 'scripts', 'eval-scenario.mjs');
 		const scenIdPre = scenarioIdOf(state);
 
@@ -756,6 +777,20 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 			}
 		}
 
+		// ── ③ design 확정 → 스펙 동결. AC·상호작용 스펙의 정규화 지문을 남겨, implement 이후의
+		// 기준 완화(같은 세션의 사후 편집)를 verify(⓪)와 done-gate(백스톱)가 탐지하게 한다.
+		// 계약 실패는 위에서 이미 return 됐으므로, 여기 도달 = design 산출물이 확정된 시점이다.
+		if (phase === 'design') {
+			const freeze = specFingerprint(repoRoot, {
+				label: (state.planSteps ?? [])[state.currentStepIdx ?? 0],
+				idx: state.currentStepIdx ?? 0,
+			});
+			if (freeze.present) {
+				state = { ...state, specFreeze: { stepId: stepIdOf(state), cycleId: cycleIdOf(state), hash: freeze.hash } };
+				log(`스펙 동결: ${stepIdOf(state)} hash=${freeze.hash.slice(0, 12)}… (AC·시나리오 변경은 design 재진입으로만)`);
+			}
+		}
+
 		if (phase === 'debate') {
 			note = `PHASE debate (outcome=${debateOutcome}, rework=${state.reworkCount ?? 0}/${MAX_REWORK}) requires agent work via /run-cycle`;
 		} else if (phase === 'vote') {
@@ -794,6 +829,27 @@ export function runOnce({ repoRoot, initSteps = null, debateOutcome: debateOutco
 
 	let advanced;
 	if (done) {
+		// ── 최종 수용 게이트 — "모든 step 병합" ≠ "사용자 목적 달성"(감사 발견). status=done 으로
+		// 마감하기 전에 계획 전체를 검사한다: acceptance 를 끝내 채우지 않은 step, 선언됐지만
+		// 단언으로 덮이지 않은 AC 가 하나라도 있으면 done 으로 위장하지 않고 blocked 로 이유를 말한다.
+		// (plan.json 이 없는 환경은 하위호환 no-op — checkFinalAcceptance.applicable=false)
+		const fin = checkFinalAcceptance(repoRoot);
+		if (fin.applicable && !fin.ok) {
+			const reason = `최종 수용 검사 실패 — ${fin.gaps.join(' / ')}`;
+			const heldState = {
+				...committedState,
+				status: 'blocked',
+				blockedReason: reason,
+				blockedAt: repoFingerprint(repoRoot),
+				reworkCount: nextReworkCount,
+				gateOverride,
+				committed: false,
+			};
+			appendCycleLog(repoRoot, cycleEntry(state, phase, 'final-acceptance-fail', reason));
+			writeState(statePath, heldState);
+			log(`BLOCKED(최종 수용): ${reason}`);
+			return { state: heldState, executedPhase: phase, rerun, note: `최종 수용 검사 실패 → blocked — ${reason}`, done: false };
+		}
 		advanced = { ...committedState, status: 'done', reworkCount: nextReworkCount, gateOverride };
 	} else {
 		advanced = {
@@ -988,6 +1044,32 @@ export function resolveInitPlan(repoRoot, specPath) {
 	if (!v.ok) {
 		return { steps: null, warnings: v.warnings, source: rel, error: `${rel} 검증 실패:\n  - ${v.errors.join('\n  - ')}` };
 	}
+	// source(인터뷰 문서 경로) 검증 — 계획은 사용자 문답의 산출물에서 와야 한다(추적성).
+	// 감사 발견: source 는 관례일 뿐 검사자가 없어, 인터뷰 없이 지어낸 계획도 그대로 시드됐다.
+	// 필드 존재 + 템플릿 placeholder 아님 + 파일 실존까지 요구한다. (인터뷰가 불가능한 환경의
+	// 명시적 예외: HARNESS_ALLOW_NO_SOURCE=1 — 기록에 남는 가시적 우회)
+	if (process.env.HARNESS_ALLOW_NO_SOURCE !== '1') {
+		const src = typeof plan.source === 'string' ? plan.source.trim() : '';
+		if (!src || /[<>]/.test(src)) {
+			return {
+				steps: null,
+				warnings: v.warnings,
+				source: rel,
+				error:
+					`${rel}: source(인터뷰 문서 경로)가 없거나 템플릿 그대로입니다.\n` +
+					`  인터뷰(Q&A) 결과를 docs/spec/interview-*.md 로 기록하고 그 경로를 source 에 적으세요.\n` +
+					`  (인터뷰가 불가능한 환경의 명시적 예외: HARNESS_ALLOW_NO_SOURCE=1)`,
+			};
+		}
+		if (!existsSync(path.resolve(repoRoot, src))) {
+			return {
+				steps: null,
+				warnings: v.warnings,
+				source: rel,
+				error: `${rel}: source 가 가리키는 인터뷰 문서가 없습니다 — ${src}`,
+			};
+		}
+	}
 	return { steps: v.labels, warnings: v.warnings, source: rel, error: null };
 }
 
@@ -1048,6 +1130,24 @@ function main() {
 		for (const w of r.warnings) console.log(`[loop] ⚠ ${w}`);
 		console.log(`[loop] 계획 정본 ${r.source} 에서 planSteps ${r.steps.length}개 파생: ${r.steps.join(', ')}`);
 		initSteps = r.steps;
+	}
+
+	// 구식 --init(라벨 시드)은 계획(AC) 없이 루프를 출발시킨다 — plan.json 을 안 만들면 AC 커버리지·
+	// 격리 채점의 AC 대조가 전부 하위호환 no-op 으로 꺼진 채 완주할 수 있었다(감사 발견).
+	// 기록 도구를 갖춘 실제 하네스에서는 정본 경로(--init-plan)를 강제하고,
+	// 셀프테스트/CI 는 env 로 명시한다(스켈레톤·임시 cwd 는 도구 부재로 종전과 동일).
+	if (initSteps && !initPlan.use) {
+		const toolingActive = existsSync(path.join(repoRoot, 'scripts', 'record-decision.mjs'));
+		const allowed =
+			process.env.HARNESS_ALLOW_LABEL_INIT === '1' || process.env.HARNESS_SELFTEST === '1' || Boolean(process.env.CI);
+		if (toolingActive && !allowed) {
+			console.error(
+				`[loop] --init(라벨 시드) 거부: 이 저장소는 계획 정본 경로를 갖추고 있습니다.\n` +
+					`  인터뷰 결과를 harness/plan.json 에 작성하고 'node scripts/loop.mjs --init-plan' 으로 시드하세요.\n` +
+					`  (셀프테스트/CI 전용 우회: HARNESS_ALLOW_LABEL_INIT=1 또는 HARNESS_SELFTEST=1)`,
+			);
+			process.exit(2);
+		}
 	}
 
 	const debateOutcome = parseDebate(argv);

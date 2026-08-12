@@ -4,7 +4,8 @@
   "_why": "예전에는 하네스가 들고 있는 계획이 문자열 라벨 배열(state.planSteps)뿐이었다. 그래서 루브릭은 '화면이 떴는가'만 채점하고, 'AC 4/4 달성'은 사람이 손으로 셌으며, step 이 무엇을 만족하면 끝인지 코드가 몰랐다 — 의도와 다르게 개발돼도 하네스가 알아채지 못했다.",
   "_labels": "label 은 git 브랜치명 step/<nn>-<slug> 로 직결되므로 \"01-login\" 형식을 쓴다. `--init-plan` 을 쓰면 라벨 일치는 자동 보장된다(정본이 하나이므로). 구식 `--init \"01-a,02-b\"` 와 병용하면 라벨이 어긋날 수 있고, 그 경우 /status 가 '⚠ 계획 불일치' 로 경고한다.",
   "_ac_writing": "AC 는 **관찰 가능한 문장**으로 쓴다. '로그인이 잘 된다'(X) → '올바른 비밀번호로 로그인하면 대시보드로 이동한다'(O). 그래야 eval-scenario 의 단언으로 옮길 수 있다.",
-  "_required": "첫 step 의 acceptance 는 **필수**다(없으면 --init-plan 이 거부한다). 뒤 step 은 비워두고 design 페이즈에서 채워도 된다 — 그 전까지 해당 step 의 AC 검사는 비활성이다.",
+  "_required": "첫 step 의 acceptance 는 **필수**다(없으면 --init-plan 이 거부한다). 뒤 step 은 비워두고 design 페이즈에서 채워도 된다 — 단 그 step 의 design 은 AC 를 채우기 전까지 전진하지 못하고(no-ac), 모든 step 의 AC 가 단언으로 덮여야 최종 done 마감이 허용된다(최종 수용 게이트).",
+  "_source": "source 는 **필수**다 — --init-plan 이 필드 존재 + 파일 실존까지 검사한다(placeholder <날짜> 그대로면 거부). design 확정 시 AC·시나리오 지문이 동결(specFreeze)되어, implement 이후 기준 완화는 verify/done-gate 가 차단한다.",
   "source": "docs/spec/interview-<날짜>.md",
   "steps": [
     {

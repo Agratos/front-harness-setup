@@ -96,8 +96,11 @@ node scripts/git-flow.mjs seed-main   # 멱등 — main 에 커밋 있으면 no-
 - AC 는 **관찰 가능한 문장**으로 쓴다. "로그인이 잘 된다"(X) → "로그인하면 대시보드로 이동한다"(O).
   그래야 `design` 페이즈에서 `harness/eval-scenario.json` 의 단언(`"ac": "AC-1"`)으로 옮길 수 있다.
 - **첫 step 의 `acceptance` 는 필수**다(없으면 아래 시드가 거부한다). 뒤 step 은 비워두고
-  `design` 페이즈에서 채워도 된다 — 그 전까지 그 step 의 AC 검사는 비활성이다.
-- `source` 에 인터뷰 문서 경로를 적어두면 `/status` 가 출처로 표시한다(추적성).
+  `design` 페이즈에서 채워도 된다 — 단, 그 step 의 design 은 AC 를 채우기 전까지 전진하지 못하고
+  (`no-ac` 검증 불가), 모든 step 의 AC 가 단언으로 덮여야 최종 `done` 마감이 허용된다(최종 수용 게이트).
+- **`source`(인터뷰 문서 경로)는 필수**다 — 시드(`--init-plan`)가 필드 존재 + 파일 실존까지 검사한다.
+  인터뷰 없이 지어낸 계획이 시드되는 것을 막는 추적성 게이트다. (인터뷰가 불가능한 환경의 명시적
+  예외: `HARNESS_ALLOW_NO_SOURCE=1`) `/status` 가 출처로 표시한다.
 
 **4-2. 계획 정본에서 시드한다 — `planSteps` 는 여기서 파생된다.**
 
@@ -121,9 +124,10 @@ node scripts/loop.mjs --init-plan
 node scripts/status.mjs   # '수용기준 AC' 줄에 AC 목록과 ✓/· 가 보이면 연결 완료
 ```
 
-> 라벨만으로 시드하는 구식 경로(`--init "01-a,02-b"`)도 남아 있다 — 비대화형 CI·셀프테스트용이다.
-> 이 경로로 시드하고 `plan.json` 을 따로 적으면 라벨이 어긋날 수 있고, 그때 `/status` 가
-> **`⚠ 계획 불일치`** 로 경고한다.
+> 라벨만으로 시드하는 구식 경로(`--init "01-a,02-b"`)는 **셀프테스트/CI 전용으로 격리**됐다 —
+> 기록 도구(`scripts/record-decision.mjs`)를 갖춘 실제 하네스에서는 `HARNESS_ALLOW_LABEL_INIT=1`
+> 또는 `HARNESS_SELFTEST=1` 없이 쓰면 **거부(exit 2)** 된다. plan.json 없이 이 경로로 시드하면
+> AC 커버리지·격리 채점의 AC 대조가 전부 no-op 으로 꺼진 채 완주하던 구멍의 봉합이다.
 
 ## 실행 요약
 

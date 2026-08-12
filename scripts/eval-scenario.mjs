@@ -38,7 +38,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { allAcIds, checkAcCoverage, findStep, formatCoverage, readPlan } from './lib/plan.mjs';
+import { acceptanceOf, allAcIds, checkAcCoverage, findStep, formatCoverage, readPlan } from './lib/plan.mjs';
 import { readState, stateFilePath } from './lib/state.mjs';
 import { teardownDevServer } from './lib/teardown.mjs';
 
@@ -132,6 +132,17 @@ export function preflight(opts, repoRoot) {
 		const idx = state?.currentStepIdx ?? 0;
 		const label = (state?.planSteps ?? [])[idx];
 		const { step: planStep } = findStep(plan, { label, idx });
+		// AC 자체가 비어 있으면 "무엇을 만족하면 끝인지" 가 없다 — 예전에는 후행 step 의 AC 미작성이
+		// 경고로만 남아(validatePlan) 그 step 이 AC 검사 없이 완주할 수 있었다(감사 발견).
+		// design 이 acceptance 를 채울 때까지 검증 불가로 차단한다(설계결함 → design 라우팅).
+		if (planStep && acceptanceOf(planStep).length === 0) {
+			return {
+				ok: false,
+				exitCode: EXIT_UNVERIFIABLE,
+				unverifiable: 'no-ac',
+				reason: `이 step("${planStep.label ?? label ?? idx}")의 acceptance 가 비어 있습니다 — design 페이즈에서 AC 를 확정하세요`,
+			};
+		}
 		// 계획 전체의 AC 집합을 함께 넘긴다 — 회귀 시나리오(다른 step 의 태그)를 오타로 오탐하지 않도록.
 		const coverage = checkAcCoverage(planStep, spec, { knownAcIds: allAcIds(plan) });
 		if (coverage.applicable && !coverage.ok) {

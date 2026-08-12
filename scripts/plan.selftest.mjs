@@ -13,7 +13,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { acceptanceOf, allAcIds, checkAcCoverage, coveredAcIds, findStep, formatCoverage, readPlan, validatePlan } from './lib/plan.mjs';
+import {
+	acceptanceOf,
+	allAcIds,
+	checkAcCoverage,
+	checkFinalAcceptance,
+	coveredAcIds,
+	findStep,
+	formatCoverage,
+	readPlan,
+	specFingerprint,
+	validatePlan,
+} from './lib/plan.mjs';
 import { resolveInitPlan } from './loop.mjs';
 import { collect, nextAction } from './status.mjs';
 
@@ -195,6 +206,18 @@ console.log('[B] eval-scenario --preflight (서버·브라우저 미사용)');
 		rmSync(gapRepo, { recursive: true, force: true });
 	}
 
+	// 현재 step 의 acceptance 가 비어 있음 → 검증 불가 (후행 step 미작성이 경고로만 남던 구멍)
+	const noAcRepo = fixture({
+		'harness/state.json': STATE,
+		'harness/plan.json': { steps: [{ label: '01-task-board' }, PLAN.steps[1]] },
+		'harness/eval-scenario.json': SPEC_FULL,
+	});
+	try {
+		check('[B] 현재 step acceptance 비어 있음 → exit 2 (design 에서 채울 때까지 차단)', run(noAcRepo) === 2);
+	} finally {
+		rmSync(noAcRepo, { recursive: true, force: true });
+	}
+
 	// plan.json 없으면 AC 검사 생략 — 기존 프로젝트 무영향
 	const legacyRepo = fixture({ 'harness/state.json': STATE, 'harness/eval-scenario.json': SPEC_PARTIAL });
 	try {
@@ -333,10 +356,45 @@ console.log('[D] plan.json 을 시드 입력으로 (계획 정본 단일화)');
 	} finally {
 		rmSync(broken, { recursive: true, force: true });
 	}
-	const good = fixture({ 'harness/plan.json': PLAN });
+	// source(인터뷰 문서) 검증 — 계획은 문답 산출물에서 와야 한다(추적성).
+	const noSource = fixture({ 'harness/plan.json': PLAN });
+	try {
+		const r = resolveInitPlan(noSource);
+		check('[D] source 없음 → 시드 거부(인터뷰 추적성)', r.steps === null && /source/.test(r.error ?? ''));
+	} finally {
+		rmSync(noSource, { recursive: true, force: true });
+	}
+	const placeholder = fixture({ 'harness/plan.json': { ...PLAN, source: 'docs/spec/interview-<날짜>.md' } });
+	try {
+		const r = resolveInitPlan(placeholder);
+		check('[D] source 가 템플릿 placeholder → 거부', r.steps === null && /템플릿 그대로/.test(r.error ?? ''));
+	} finally {
+		rmSync(placeholder, { recursive: true, force: true });
+	}
+	const ghostSource = fixture({ 'harness/plan.json': { ...PLAN, source: 'docs/spec/interview-9999.md' } });
+	try {
+		const r = resolveInitPlan(ghostSource);
+		check('[D] source 파일 실존하지 않음 → 거부', r.steps === null && /인터뷰 문서가 없습니다/.test(r.error ?? ''));
+	} finally {
+		rmSync(ghostSource, { recursive: true, force: true });
+	}
+	const noSourceAllowed = fixture({ 'harness/plan.json': PLAN });
+	try {
+		process.env.HARNESS_ALLOW_NO_SOURCE = '1';
+		const r = resolveInitPlan(noSourceAllowed);
+		check('[D] HARNESS_ALLOW_NO_SOURCE=1 은 명시적 예외로 허용', r.error === null && r.steps.length === 2);
+	} finally {
+		delete process.env.HARNESS_ALLOW_NO_SOURCE;
+		rmSync(noSourceAllowed, { recursive: true, force: true });
+	}
+
+	const good = fixture({
+		'harness/plan.json': { ...PLAN, source: 'docs/spec/interview-t.md' },
+		'docs/spec/interview-t.md': '# 인터뷰\nQ: 무엇을 만드는가? A: 작업 보드',
+	});
 	try {
 		const r = resolveInitPlan(good);
-		check('[D] 정본에서 planSteps 파생', r.error === null && r.steps.join() === '01-task-board,02-filter');
+		check('[D] 정본(source 실존)에서 planSteps 파생', r.error === null && r.steps.join() === '01-task-board,02-filter');
 	} finally {
 		rmSync(good, { recursive: true, force: true });
 	}
@@ -365,6 +423,73 @@ console.log('[D] plan.json 을 시드 입력으로 (계획 정본 단일화)');
 	check('[D] decompose 에서도 AC 공백은 이유에 표시', /AC-1/.test(gapCtx('decompose').why));
 	check('[D] design 에서 "이 페이즈에서 작성" 안내', /이 페이즈에서 단언을 작성/.test(gapCtx('design').why));
 	check('[D] verify 에서는 AC 채우기가 다음 행동', /ac 태그 추가/.test(gapCtx('verify').action));
+}
+
+// ───────── [E] 스펙 동결 지문 + 최종 수용 검사 ─────────
+console.log('[E] specFingerprint / checkFinalAcceptance');
+{
+	// 지문 — plan 이 없으면 비활성, 내용이 같으면 안정, 판정 재료가 바뀌면 변한다
+	const bare = fixture({});
+	try {
+		check('[E] plan.json 없으면 present=false (동결 비활성)', specFingerprint(bare, { idx: 0 }).present === false);
+	} finally {
+		rmSync(bare, { recursive: true, force: true });
+	}
+	const base = fixture({ 'harness/plan.json': PLAN, 'harness/eval-scenario.json': SPEC_FULL });
+	const weakAc = fixture({
+		'harness/plan.json': { ...PLAN, steps: [{ ...PLAN.steps[0], acceptance: [PLAN.steps[0].acceptance[0]] }, PLAN.steps[1]] },
+		'harness/eval-scenario.json': SPEC_FULL,
+	});
+	const weakSpec = fixture({ 'harness/plan.json': PLAN, 'harness/eval-scenario.json': SPEC_PARTIAL });
+	const sameAgain = fixture({ 'harness/plan.json': PLAN, 'harness/eval-scenario.json': SPEC_FULL });
+	try {
+		const where = { label: '01-task-board', idx: 0 };
+		const h0 = specFingerprint(base, where).hash;
+		check('[E] 같은 내용 → 같은 지문(결정적)', h0 === specFingerprint(sameAgain, where).hash);
+		check('[E] AC 를 줄이면(사후 완화) 지문이 변한다', h0 !== specFingerprint(weakAc, where).hash);
+		check('[E] 단언을 줄여도 지문이 변한다', h0 !== specFingerprint(weakSpec, where).hash);
+	} finally {
+		for (const d of [base, weakAc, weakSpec, sameAgain]) rmSync(d, { recursive: true, force: true });
+	}
+
+	// 최종 수용 — 계획 전체가 검증으로 덮여야 done 마감이 허용된다
+	const noPlan = fixture({});
+	try {
+		check('[E] plan 없으면 applicable=false (하위호환)', checkFinalAcceptance(noPlan).applicable === false);
+	} finally {
+		rmSync(noPlan, { recursive: true, force: true });
+	}
+	// SPEC_FULL 은 AC-1·AC-2 만 덮는다 — 02-filter 의 AC-3 이 미검증으로 잡혀야 한다
+	const partial = fixture({ 'harness/plan.json': PLAN, 'harness/eval-scenario.json': SPEC_FULL });
+	try {
+		const r = checkFinalAcceptance(partial);
+		check('[E] 미검증 AC(AC-3) → ok=false + step 지목', r.ok === false && r.gaps.some((g) => /02-filter/.test(g) && /AC-3/.test(g)));
+	} finally {
+		rmSync(partial, { recursive: true, force: true });
+	}
+	// acceptance 를 끝내 안 채운 step 도 잡는다
+	const emptyStep = fixture({
+		'harness/plan.json': { steps: [PLAN.steps[0], { label: '02-filter' }] },
+		'harness/eval-scenario.json': SPEC_FULL,
+	});
+	try {
+		const r = checkFinalAcceptance(emptyStep);
+		check('[E] acceptance 미작성 step → gap 으로 지목', r.ok === false && r.gaps.some((g) => /02-filter/.test(g) && /미작성/.test(g)));
+	} finally {
+		rmSync(emptyStep, { recursive: true, force: true });
+	}
+	// 전부 덮이면 ok
+	const covered = fixture({
+		'harness/plan.json': PLAN,
+		'harness/eval-scenario.json': {
+			scenarios: [...SPEC_FULL.scenarios, { name: '필터', ac: 'AC-3', steps: [{ assert: 'textVisible', text: 'y' }] }],
+		},
+	});
+	try {
+		check('[E] 계획 전체가 덮이면 ok=true', checkFinalAcceptance(covered).ok === true);
+	} finally {
+		rmSync(covered, { recursive: true, force: true });
+	}
 }
 
 console.log('');
