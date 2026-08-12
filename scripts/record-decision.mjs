@@ -112,6 +112,10 @@ function main() {
 	const cycleId = args.cycle && args.cycle !== 'true' ? args.cycle : cycleIdOf(state);
 	const stepLabel = args['linked-step'] ?? (state?.planSteps ?? [])[state?.currentStepIdx ?? 0] ?? null;
 
+	// 세션 지문(세션 분리 3단계): run-phase-session 이 격리 세션에 HARNESS_SESSION_ID 를 심는다.
+	// 이 CLI 가 그 지문을 기록에 함께 찍어, phase-gate 가 "판정 세션 ≠ 구현 세션" 을 검증할 수 있게 한다.
+	const sessionId = typeof process.env.HARNESS_SESSION_ID === 'string' ? process.env.HARNESS_SESSION_ID.trim() : '';
+
 	const filePath = logDecision(repoRoot, {
 		topic: args.topic,
 		raisedBy: args['raised-by'] ?? 'pm',
@@ -124,11 +128,13 @@ function main() {
 		linkedStep: stepLabel ? `${stepLabel} (${phase})` : `(${phase})`,
 		cycleId,
 		phase,
+		sessionId: sessionId || undefined,
 	});
 
 	const rel = path.relative(repoRoot, filePath) || filePath;
 	console.log(`[record-decision] 기록 완료: ${rel}`);
 	console.log(`[record-decision] 스탬프: ${artifactMarker(cycleId, phase)}`);
+	if (sessionId) console.log(`[record-decision] 세션 지문: ${sessionId}`);
 	if (!existsSync(statePath)) {
 		console.log('[record-decision] ⚠ state.json 이 없어 --cycle 값을 그대로 사용했습니다 — 드라이버 사이클과 일치하는지 확인하세요');
 	}

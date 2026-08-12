@@ -12,7 +12,7 @@
 import { appendFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { artifactMarker } from './artifact.mjs';
+import { artifactMarker, sessionMarker } from './artifact.mjs';
 import { mirrorDecisionComment } from './notion.mjs';
 
 /**
@@ -162,12 +162,13 @@ export function logCycle(repoRoot, { step, phase, note, phaseSeq, checkpointToke
  *   linkedStep?: string,                             // 연결 단계(step 라벨/id)
  *   cycleId?: string,                                // (선택) 이번 사이클 `step-<idx>#<rework>`
  *   phase?: string,                                  // (선택) 이 기록이 마감하는 페이즈
+ *   sessionId?: string,                              // (선택) 이 기록을 남긴 세션 지문(세션 분리 3단계)
  * }} entry
  * @returns {string} 생성된 파일의 절대경로
  */
 export function logDecision(
 	repoRoot,
-	{ topic, raisedBy, claims, rebuttals, compromise, conclusion, why, impact, linkedStep, cycleId, phase } = {},
+	{ topic, raisedBy, claims, rebuttals, compromise, conclusion, why, impact, linkedStep, cycleId, phase, sessionId } = {},
 ) {
 	const dir = path.join(repoRoot, 'harness', 'decisions');
 	mkdirSync(dir, { recursive: true });
@@ -215,13 +216,18 @@ export function logDecision(
 	// HTML 주석이라 렌더링에는 보이지 않고, 파싱은 includes 한 번으로 끝난다(표 행 파싱보다 어긋날 여지가 없다).
 	// cycleId·phase 를 주지 않으면 마커 없이 기록된다 → 페이즈 계약 증거로는 인정되지 않는다.
 	const stamped = typeof cycleId === 'string' && cycleId && typeof phase === 'string' && phase;
+	// 세션 지문(세션 분리 3단계) — run-phase-session 이 발급한 id 가 env 로 전파되어 여기 찍힌다.
+	// phase-gate 가 "판정 세션 ≠ 구현 세션" 을 이 지문으로 교차 검증한다(sessionIsolation 옵트인).
+	const withSession = typeof sessionId === 'string' && sessionId.trim();
 	const content = [
 		...(stamped ? [artifactMarker(cycleId, phase), ``] : []),
+		...(withSession ? [sessionMarker(sessionId.trim()), ``] : []),
 		`# 협의 결정 로그 — ${id}`,
 		``,
 		`| 키 | 값 |`,
 		`| --- | --- |`,
 		...(stamped ? [`| 사이클 | ${oneLine(cycleId)} |`, `| 페이즈 | ${oneLine(phase)} |`] : []),
+		...(withSession ? [`| 세션 | ${oneLine(sessionId.trim())} |`] : []),
 		`| 안건 | ${oneLine(topicVal)} |`,
 		`| 제기자 | ${oneLine(raisedByVal)} |`,
 		`| 타협 | ${oneLine(compromiseVal)} |`,
