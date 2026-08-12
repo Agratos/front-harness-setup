@@ -77,9 +77,10 @@ node scripts/phase-gate.selftest.mjs        # 페이즈 산출물 계약(스탬�
 node scripts/record-decision.selftest.mjs   # 기록 CLI(인자 계약·스탬프 자동·claims 파싱)
 node scripts/eval-review.selftest.mjs       # 격리 채점(세션 분리 1단계 — 하향 단조·스탬프·변조 탐지·loop 배선)
 node scripts/run-phase-session.selftest.mjs # 격리 페이즈 세션 러너(세션 분리 3단계 — 지문 발급·전파·교차 검증 사슬)
+node scripts/resume-watch.selftest.mjs      # 재개 루프 코드화(stale 인수·잠금 양보·blocked 불간섭·stuck 정지)
 ```
 
-> CI(`.github/workflows/ci.yml`)는 게이트 4종 + self-test **19종**(위 목록 + `lib/state`·`lib/lock`·`done-gate`) + `demo.mjs` 를 모두 실행합니다.
+> CI(`.github/workflows/ci.yml`)는 게이트 4종 + self-test **20종**(위 목록 + `lib/state`·`lib/lock`·`done-gate`) + `demo.mjs` 를 모두 실행합니다.
 
 ## 구조 개요
 
@@ -113,7 +114,7 @@ harness-setup/
 │  ├─ evaluations/         # 차원별 평점 + 스크린샷
 │  └─ report.md            # 최종 보고서 (데모/실행 종료 시 채워짐)
 ├─ docs/               # FSD 규약·루브릭·상태 매니페스트·상세 사용법
-├─ .github/workflows/  # CI (게이트 4종 + 자가검증 19종 + 통합 데모)
+├─ .github/workflows/  # CI (게이트 4종 + 자가검증 20종 + 통합 데모)
 └─ src/                # FSD 웹프론트 (실재 예시 슬라이스 포함 — 사양서 확정 4)
    ├─ app/                 # providers(react-query; mantine·router 는 제품 단계 추가) + App
    ├─ pages/               # 실재 예시: home (feature 조립)
