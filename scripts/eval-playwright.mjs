@@ -24,6 +24,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { readGateStatus } from './done-gate.mjs';
+import { allAcIds, checkAcCoverage, findStep, readPlan, scenarioSpecPath } from './lib/plan.mjs';
 import { applyInjectedScore, DIMENSIONS, scoreObservations } from './lib/rubric.mjs';
 import { cycleIdOf, readState, stateFilePath, stepIdOf } from './lib/state.mjs';
 import { isPortInUse, teardownDevServer } from './lib/teardown.mjs';
@@ -231,6 +232,36 @@ export function readE2eOutcome(repoRoot, state) {
 	}
 }
 
+/**
+ * AC 실증 관찰 — 루브릭 `fn.ac-verified`(단일 최대 가중)의 입력.
+ *
+ * "검증됨" 의 정의: 이 step 의 **모든 AC 가 단언으로 덮였고**(plan.json ↔ eval-scenario.json 커버리지 —
+ * verify preflight 와 같은 판정 함수) **그 단언들이 이번 사이클 E2E 에서 실제 통과**(scenario.json)했다.
+ * plan.json 이 없거나 이 step 에 AC 가 없으면 applicable=false — 루브릭이 명시 skip 으로 처리한다
+ * (환경 부재만 skip, 미관찰은 불만 — F19 원칙 유지).
+ *
+ * @param {string} repoRoot
+ * @param {object|null} state
+ * @param {boolean|null} e2ePassed readE2eOutcome 결과
+ * @returns {{applicable:boolean, verified:boolean|null, total:number, missing:string[]}}
+ */
+export function readAcVerification(repoRoot, state, e2ePassed) {
+	const { present, plan, error } = readPlan(repoRoot);
+	if (!present || error || !plan) return { applicable: false, verified: null, total: 0, missing: [] };
+	const idx = state?.currentStepIdx ?? 0;
+	const label = (state?.planSteps ?? [])[idx];
+	const { step } = findStep(plan, { label, idx });
+	let spec = null;
+	try {
+		spec = JSON.parse(readFileSync(scenarioSpecPath(repoRoot), 'utf8'));
+	} catch {
+		spec = null;
+	}
+	const cov = checkAcCoverage(step, spec, { knownAcIds: allAcIds(plan) });
+	if (!cov.applicable) return { applicable: false, verified: null, total: 0, missing: [] };
+	return { applicable: true, verified: cov.ok && e2ePassed === true, total: cov.total, missing: cov.missing };
+}
+
 /** Playwright 로 실측 관찰값 수집 + 스크린샷. 실패 시 null. */
 async function playwrightObservations(pw, port, shotPath, { gatesGreen, expectedName, e2ePassed }) {
 	let browser;
@@ -433,6 +464,16 @@ export async function runEvaluation(opts, repoRoot) {
 		log(`상호작용(E2E) 실증: ${e2ePassed ? 'PASS' : 'FAIL'}`);
 	}
 
+	// AC 실증 — 루브릭 fn.ac-verified(단일 최대 가중)의 입력 (4순위 verdict).
+	const ac = readAcVerification(repoRoot, st, e2ePassed);
+	if (!ac.applicable) {
+		log('AC 실증: 해당 없음(plan.json 없음 또는 이 step 의 AC 미선언) — fn.ac-verified 는 명시 skip');
+	} else {
+		log(
+			`AC 실증: ${ac.verified ? `검증됨 (AC ${ac.total}건 전부 단언 커버 + E2E 통과)` : `미검증 — ${ac.missing.length ? `미커버 ${ac.missing.join(', ')}` : 'E2E 미통과/미실행'} → major`}`,
+		);
+	}
+
 	try {
 		// 1) dev 서버 기동 (--no-server 면 생략 — 외부에서 띄운 서버 가정)
 		if (!opts.noServer) {
@@ -462,6 +503,13 @@ export async function runEvaluation(opts, repoRoot) {
 		} else {
 			if (!pw) log('Playwright 미설치 — 정적 폴백(미관찰 항목은 감점 → 임계 통과 불가)');
 			observations = staticObservations(repoRoot, { serverReady, gatesGreen, e2ePassed });
+		}
+
+		// AC 실증 관찰 주입 — 관찰 수집 방식(playwright/정적 폴백)과 무관한 파일 산출물 기반이므로 공통.
+		if (observations) {
+			observations.acApplicable = ac.applicable;
+			observations.acVerified = ac.applicable ? ac.verified : null;
+			observations.acTotal = ac.total;
 		}
 
 		// 3) 채점 (루브릭) + 주입 오버라이드

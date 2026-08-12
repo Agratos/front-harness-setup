@@ -101,6 +101,8 @@ async function main() {
 		appMounted: true,
 		runtimeErrors: 0,
 		e2ePassed: true,
+		acApplicable: true,
+		acVerified: true,
 		navigable: true,
 		gatesGreen: true,
 		screenshotOk: true,
@@ -167,6 +169,23 @@ async function main() {
 		failE2e.complaints.some((c) => c.item === 'fn.e2e-verified' && c.reason === 'failed'),
 	);
 	check('[B2] 빈 스캐폴드가 100점을 받던 경로 차단 확인', failE2e.score < 100 && failE2e.majorComplaints > 0);
+
+	// ── [B3] AC 실증 — 루브릭 단일 최대 가중 항목 (4순위 verdict) ────────────────────
+	// "시행 6 이 AC 11/11 을 E2E 로 증명하고도 루브릭 점수에는 반영되지 않던" 자인된 공백의 봉합.
+	const acFail = scoreObservations({ ...perfectObs, acVerified: false });
+	check(
+		'[B3] AC 미검증 → fn.ac-verified major 불만(reason=failed)',
+		acFail.majorComplaints >= 1 && acFail.complaints.some((c) => c.item === 'fn.ac-verified' && c.severity === 'major' && c.reason === 'failed'),
+	);
+	// fn: 100-30=70 → 종합 = 25+20+0.35*70+20 = 89.5 → 90. major 가 있으므로 done-gate 는 어차피 차단.
+	check(`[B3] AC 미검증 → 단일 항목 최대 감점 (실제 ${acFail.score})`, acFail.score <= 90);
+	const acNA = scoreObservations({ ...perfectObs, acApplicable: false, acVerified: null });
+	check('[B3] plan 없는 프로젝트(acApplicable=false 명시) → skip(감점·불만 없음)', acNA.score === 100 && acNA.complaints.length === 0);
+	const acUnobserved = scoreObservations({ ...perfectObs, acApplicable: undefined, acVerified: undefined });
+	check(
+		'[B3] AC 미관찰(undefined)은 통과가 아니다(reason=unobserved)',
+		acUnobserved.complaints.some((c) => c.item === 'fn.ac-verified' && c.reason === 'unobserved'),
+	);
 
 	// 주입 오버라이드: 관찰과 무관하게 score/major 덮어쓰기
 	const injected = applyInjectedScore(scoreObservations(perfectObs), { score: 40, majorComplaints: 2 });

@@ -64,16 +64,24 @@
 
 | 항목 ID               | 체크리스트 질문                                                                       | 배점 | 실패 시 심각도 |
 | --------------------- | ------------------------------------------------------------------------------------- | ---- | -------------- |
-| `fn.app-mounts`       | React 앱이 `#root` 에 마운트되는가                                                    | 30   | **major**      |
-| `fn.no-runtime-error` | 페이지 로드 중 처리되지 않은 런타임 예외가 없는가                                     | 30   | **major**      |
-| `fn.e2e-verified`     | **이번 사이클의 상호작용(E2E) 단언이 모두 통과했는가** (`eval-scenario` 산출물)        | 30   | **major**      |
-| `fn.navigable`        | 첫 내부 링크 클릭(내비게이션) 후에도 앱이 살아있는가                                  | 10   | minor          |
+| `fn.app-mounts`       | React 앱이 `#root` 에 마운트되는가                                                    | 20   | **major**      |
+| `fn.no-runtime-error` | 페이지 로드 중 처리되지 않은 런타임 예외가 없는가                                     | 20   | **major**      |
+| `fn.e2e-verified`     | **이번 사이클의 상호작용(E2E) 단언이 모두 통과했는가** (`eval-scenario` 산출물)        | 25   | **major**      |
+| `fn.ac-verified`      | **이 step 의 모든 수용기준(AC)이 화면에서 증명됐는가** (plan↔scenario 커버리지 + E2E) | 30   | **major**      |
+| `fn.navigable`        | 첫 내부 링크 클릭(내비게이션) 후에도 앱이 살아있는가                                  | 5    | minor          |
 
 > `fn.e2e-verified` 는 **"떴는가"가 아니라 "조작했을 때 기대대로 됐는가"** 를 본다.
 > 이 항목이 없던 동안 루브릭의 모든 항목이 "렌더/에러/게이트" 였고, 그래서 **기능 0개 빈 스캐폴드가
 > 종합 100점 / major 0** 을 받았다(실측). 입력은 verify 페이즈가 남긴
 > `harness/evaluations/scen-step-<idx>-r<rework>/scenario.json` 의 `passed` 이며,
 > **파일이 없으면 미관찰 → major 불만**이다(= verify 를 먼저 통과해야 평가가 성립한다).
+>
+> `fn.ac-verified` 는 루브릭의 **단일 최대 가중 항목**(4순위 verdict)이다 — "테스트가 통과했다" 가 아니라
+> **"사용자가 확정한 수용기준(AC)이 화면에서 증명됐다"** 를 채점한다. 판정 = 이 step 의 모든 AC 가
+> 단언으로 덮였고(`plan.json` ↔ `eval-scenario.json` 커버리지) 그 단언들이 이번 사이클 E2E 에서 통과.
+> `plan.json` 이 없거나 이 step 에 AC 가 없으면 **명시 관찰값(acApplicable=false)으로만 skip** 하며,
+> 미관찰(undefined)은 종전 원칙(F19)대로 major 불만이다. vote-override 로 병합돼도 이 항목의
+> 미달은 점수·불만 기록에 남는다.
 >
 > 근본 해결(요구사항→AC→E2E 추적성)은 `plan.json`(로드맵 3단계)이 필요하다. 이 항목은
 > 그 전에도 "상호작용이 실제로 검증됐다"는 사실이 점수에 반영되게 하는 최소 장치다.
