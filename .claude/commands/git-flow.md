@@ -103,8 +103,10 @@ node scripts/git-flow.mjs merge-step 01 login
 
 ## 원격 main 보호 (GitHub)
 
-- 원격 main 에는 **최소 보호**를 적용한다: force-push 차단 + 브랜치 삭제 차단, required check 없음.
-  (2026-08-12 `Agratos/harness-setup-test` 적용 — `gh api PUT .../branches/main/protection`)
+- 이 저장소(하네스 본체)의 원격은 **`Agratos/front-harness-setup`** 이다. `Agratos/harness-setup-test` 는
+  테스트벤치 시행용 스크래치 저장소로, **보호를 걸지 않는다**(시행마다 무관한 이력으로 리셋 — force-push 필요).
+- 본체 원격 main 에는 **최소 보호**를 적용한다: force-push 차단 + 브랜치 삭제 차단, required check 없음.
+  (2026-08-12 적용 — `gh api PUT repos/Agratos/front-harness-setup/branches/main/protection`)
 - **required status check / PR 필수를 걸지 않는 이유**: merge-step 은 로컬 done-gate 통과 후 main 을
   **직접 push** 한다. 원격이 "체크 통과 커밋만 push 허용" 을 요구하면 push 시점엔 체크가 존재하지 않아
   전부 거부되고, `pushIfRemote` 는 push 실패를 무시하므로 **로컬/원격 main 이 조용히 갈라진다**.
