@@ -26,11 +26,11 @@
 // 면제는 명시로: 코드 변경이 필요 없는 step(문서·설정만)은 `--phase=implement` 기록을 남겨
 //   "왜 코드가 없는가" 를 적는다. 침묵의 통과는 없다.
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { preflight } from '../eval-scenario.mjs';
-import { artifactMarker, findPhaseRecord } from './artifact.mjs';
+import { artifactMarker, findPhaseRecord, phaseRecordSession } from './artifact.mjs';
 import { cycleIdOf } from './state.mjs';
 
 /**
@@ -112,13 +112,66 @@ export function codeFingerprint(repoRoot) {
 }
 
 /**
+ * harness/config.json 의 세션 격리 옵트인 여부(세션 분리 3단계).
+ * true 면 debate/vote 기록에 **세션 지문**이 있어야 하고, 설계·구현 세션과 달라야 한다.
+ */
+export function sessionIsolationActive(repoRoot) {
+	try {
+		const cfg = JSON.parse(readFileSync(path.join(repoRoot, 'harness', 'config.json'), 'utf8'));
+		return cfg?.sessionIsolation === true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * 판정 페이즈(debate/vote)의 세션 지문 교차 검증 — "판정 세션 ≠ 설계/구현 세션".
+ *
+ * 왜 필요한가: 지문 없이는 "debate 를 별도 세션에서 했다" 가 md 지시일 뿐 검사자가 없다.
+ * run-phase-session 이 심은 HARNESS_SESSION_ID 가 record-decision 스탬프에 찍히므로,
+ * 여기서 ① 판정 기록에 지문이 있는가 ② 같은 사이클의 design/implement 기록 지문과 다른가를 본다.
+ * (opt-in: harness/config.json `sessionIsolation: true` — 켜기 전 기록·기존 프로젝트는 무영향)
+ * @returns {{ok:boolean, reason:string, hint?:string}}
+ */
+function checkJudgeSessionIsolation(repoRoot, state, phase) {
+	const cycleId = cycleIdOf(state);
+	const judge = phaseRecordSession(repoRoot, cycleId, phase);
+	if (!judge.sessionId) {
+		return {
+			ok: false,
+			reason: `세션 격리 활성 — '${phase}' 기록(${judge.file ?? '?'})에 세션 지문이 없습니다(오케스트레이터가 직접 기록한 것으로 판단)`,
+			hint: `node scripts/run-phase-session.mjs --phase=${phase} 로 격리 세션에서 수행하세요`,
+		};
+	}
+	for (const other of ['design', 'implement']) {
+		const rec = phaseRecordSession(repoRoot, cycleId, other);
+		if (rec.found && rec.sessionId && rec.sessionId === judge.sessionId) {
+			return {
+				ok: false,
+				reason: `세션 격리 위반 — '${phase}' 판정 세션(${judge.sessionId})이 '${other}' 세션과 동일합니다(같은 손이 만들고 판정)`,
+				hint: `node scripts/run-phase-session.mjs --phase=${phase} 로 별도 세션에서 재수행하세요`,
+			};
+		}
+	}
+	return { ok: true, reason: `세션 지문 확인 — ${judge.sessionId} (설계/구현 세션과 상이)` };
+}
+
+/**
  * decision 증거 검사 (decompose/design/debate/vote 공용).
  * @returns {{ok:boolean, reason:string, hint?:string}}
  */
 function checkDecisionRecord(repoRoot, state, phase) {
 	const cycleId = cycleIdOf(state);
 	const { found, file } = findPhaseRecord(repoRoot, cycleId, phase);
-	if (found) return { ok: true, reason: `결정 기록 확인 — ${file}` };
+	if (found) {
+		// 판정 페이즈는 세션 격리 옵트인 시 지문 교차 검증을 추가로 받는다(세션 분리 3단계).
+		if ((phase === 'debate' || phase === 'vote') && sessionIsolationActive(repoRoot)) {
+			const iso = checkJudgeSessionIsolation(repoRoot, state, phase);
+			if (!iso.ok) return iso;
+			return { ok: true, reason: `결정 기록 확인 — ${file} / ${iso.reason}` };
+		}
+		return { ok: true, reason: `결정 기록 확인 — ${file}` };
+	}
 	return {
 		ok: false,
 		reason: `이번 사이클(${cycleId})의 '${phase}' 결정 기록이 없습니다 — ${PHASE_CONTRACT[phase]?.what ?? '협의 기록'}`,
@@ -227,6 +280,7 @@ export default {
 	PHASE_CONTRACT,
 	recorderPath,
 	contractActive,
+	sessionIsolationActive,
 	artifactMarker,
 	findPhaseRecord,
 	codeFingerprint,

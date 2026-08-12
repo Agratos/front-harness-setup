@@ -12,9 +12,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { artifactMarker, findPhaseRecord } from './lib/artifact.mjs';
+import { artifactMarker, findPhaseRecord, phaseRecordSession, sessionMarker } from './lib/artifact.mjs';
 import { logDecision } from './lib/log.mjs';
-import { checkPhaseContract, codeFingerprint, contractActive, PHASE_CONTRACT } from './lib/phase-gate.mjs';
+import { checkPhaseContract, codeFingerprint, contractActive, PHASE_CONTRACT, sessionIsolationActive } from './lib/phase-gate.mjs';
 
 const failures = [];
 function check(label, cond, extra) {
@@ -255,6 +255,62 @@ console.log('=== phase-gate selftest C-3: design 계약(스펙·AC + 결정 기�
 		check('C-3: AC 미커버 → design 에서 차단(ac-uncovered)', uncovered.ok === false && uncovered.cause?.unverifiable === 'ac-uncovered');
 	} catch (err) {
 		failures.push(`C-3 예외: ${err?.stack ?? String(err)}`);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+// ── [D] 세션 격리(세션 분리 3단계): 판정 세션 ≠ 설계/구현 세션 (opt-in) ────────────
+console.log('');
+console.log('=== phase-gate selftest D: 세션 지문 교차 검증(sessionIsolation opt-in) ===');
+{
+	const dir = mkdtempSync(path.join(os.tmpdir(), 'pg-session-'));
+	try {
+		activateContract(dir);
+		mkdirSync(path.join(dir, 'harness'), { recursive: true });
+		writeFileSync(
+			path.join(dir, 'harness', 'config.json'),
+			JSON.stringify({ useGit: false, sessionIsolation: true }) + '\n',
+			'utf8',
+		);
+		check('D: config.sessionIsolation=true → 활성', sessionIsolationActive(dir) === true);
+
+		// 지문 왕복 — logDecision(sessionId) → phaseRecordSession 이 같은 값을 읽는다
+		logDecision(dir, { topic: 't', conclusion: 'c', why: 'w', cycleId: 'step-0#9', phase: 'design', sessionId: 'sess-round' });
+		const round = phaseRecordSession(dir, 'step-0#9', 'design');
+		check('D: 세션 지문 왕복(logDecision → phaseRecordSession)', round.found === true && round.sessionId === 'sess-round');
+		check('D: 마커 형식 고정', sessionMarker('sess-x') === '<!-- harness:session id=sess-x -->');
+
+		// (D-1) 격리 활성 + 지문 없는 debate 기록 → 실패 (오케스트레이터 직접 기록으로 판단)
+		const st0 = { ...baseState, phase: 'debate', reworkCount: 0 };
+		writeState(dir, st0);
+		logDecision(dir, { topic: '판정', conclusion: 'pass', why: 'w', cycleId: 'step-0#0', phase: 'debate' });
+		const d1 = checkPhaseContract({ repoRoot: dir, state: st0, phase: 'debate' });
+		check('D-1: 지문 없는 판정 기록 → 실패', d1.ok === false && /세션 지문이 없습니다/.test(d1.reason));
+		check('D-1: 조치로 run-phase-session 안내', /run-phase-session/.test(d1.hint ?? ''));
+
+		// (D-2) 설계/구현과 다른 세션의 판정 → 통과
+		const st1 = { ...baseState, phase: 'debate', reworkCount: 1 };
+		logDecision(dir, { topic: '설계', conclusion: 'c', why: 'w', cycleId: 'step-0#1', phase: 'design', sessionId: 'sess-design-1' });
+		logDecision(dir, { topic: '면제', conclusion: '코드 변경 불필요', why: 'w', cycleId: 'step-0#1', phase: 'implement', sessionId: 'sess-impl-1' });
+		logDecision(dir, { topic: '판정', conclusion: 'pass', why: 'w', cycleId: 'step-0#1', phase: 'debate', sessionId: 'sess-judge-1' });
+		const d2 = checkPhaseContract({ repoRoot: dir, state: st1, phase: 'debate' });
+		check('D-2: 판정 세션이 설계/구현과 다르면 통과', d2.ok === true && /세션 지문 확인/.test(d2.reason));
+
+		// (D-3) 구현 세션과 같은 지문의 판정 → 실패 (같은 손이 만들고 판정)
+		const st2 = { ...baseState, phase: 'debate', reworkCount: 2 };
+		logDecision(dir, { topic: '구현', conclusion: 'c', why: 'w', cycleId: 'step-0#2', phase: 'implement', sessionId: 'sess-same' });
+		logDecision(dir, { topic: '판정', conclusion: 'pass', why: 'w', cycleId: 'step-0#2', phase: 'debate', sessionId: 'sess-same' });
+		const d3 = checkPhaseContract({ repoRoot: dir, state: st2, phase: 'debate' });
+		check('D-3: 구현 세션과 동일한 판정 세션 → 실패', d3.ok === false && /세션 격리 위반/.test(d3.reason));
+
+		// (D-4) 격리 옵트인 해제 → 지문 없는 기록도 종전대로 통과 (기존 프로젝트 무영향)
+		writeFileSync(path.join(dir, 'harness', 'config.json'), JSON.stringify({ useGit: false }) + '\n', 'utf8');
+		check('D-4: config 미설정 → 비활성', sessionIsolationActive(dir) === false);
+		const d4 = checkPhaseContract({ repoRoot: dir, state: st0, phase: 'debate' });
+		check('D-4: 격리 꺼짐 → 지문 없는 기록도 통과(하위호환)', d4.ok === true);
+	} catch (err) {
+		failures.push(`D 예외: ${err?.stack ?? String(err)}`);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

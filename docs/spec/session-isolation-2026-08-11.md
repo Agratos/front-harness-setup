@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | **1단계 — 채점 격리** | `eval-review.mjs`(격리 리뷰 스포너·스탬프 발급자) + `loop.mjs` evaluate 강제 배선 + `done-gate` 변조 탐지 | ✅ 반영 (2026-08-11) |
 | **2단계 — debate 입력 제한** | debate 의 pass/rework 근거를 격리 산출물(격리 리뷰 스탬프가 **유효한** 평가 JSON)로 제한 — `resolveDebateOutcome` 이 `verifyEvalReview` 로 근거를 검증하고, 스탬프 없음·변조·수기 skip 은 근거 무효(무근거 기본값 규칙으로 폴백). `--debate`/`HARNESS_DEBATE_OUTCOME` 주입은 `HARNESS_SELFTEST=1`/CI 전용으로 격리(그 외 무시+로그). 시행 7 로 격리 채점 효과 계측(격리 전후 점수 분포 대조)은 남은 항목 | ✅ 반영 (2026-08-12) |
-| 3단계 — 계획/개발 세션 분리 | `loop.mjs` 가 이미 "한 호출 = 한 페이즈" 상태 기계이므로, 페이즈 그룹별 헤드리스 세션 러너(`run-phase-session.mjs`)가 decompose·design / implement / evaluate·debate 를 각각 fresh 세션으로 실행. 세션 지문(spawn id)을 record-decision 스탬프에 포함, phase-gate 가 "구현 세션 ≠ 채점 세션" 교차 검증 | 대기 |
+| **3단계 — 계획/개발 세션 분리** | `run-phase-session.mjs` — 에이전트 페이즈(decompose/design/implement/debate/vote)를 각각 **fresh `claude -p` 세션**으로 실행(페이즈별 도구 제한 — 판정 세션은 쓰기 불가). 세션 지문(`HARNESS_SESSION_ID`)을 발급해 `record-decision` 스탬프에 자동 기록, `phase-gate` 가 **"판정 세션 ≠ 설계/구현 세션"** 을 교차 검증. 강제는 `harness/config.json` `sessionIsolation: true` **옵트인**(기존 프로젝트·러너 미사용 흐름은 무영향). 세션 실행 이력은 `harness/sessions/log.ndjson`(프롬프트 파일 보존, `HARNESS_PHASE_CMD` 오버라이드는 cmd 에 노출) | ✅ 반영 (2026-08-12) |
 
 > 1단계를 채점부터 시작하는 이유: 품질 보증의 병목이 주관 점수의 독립성이고(시행 6의 96→100 이
 > 독립성 없는 숫자였다), `loop.mjs` 의 evaluate 강제 배선(runEvaluatePhase)이라는 **기존 코드 게이트에
@@ -140,3 +140,7 @@
   격리하고, 파일 평가는 격리 리뷰 스탬프가 유효할 때만 판정 근거로 인정(`resolveDebateOutcome` 이
   `verifyEvalReview` 재사용). 셀프테스트: loop [K]. 관련 보완(같은 날, step/37): design 확정 시
   AC·시나리오 지문 동결(specFreeze) — "개발 세션이 테스트 기준을 사후 완화" 하는 경로 차단.
+- 2026-08-12: **3단계 반영** — `run-phase-session.mjs`(격리 페이즈 세션 러너 + 세션 지문 발급) ·
+  `record-decision`/`logDecision` 세션 마커 · `phase-gate` 판정 세션 교차 검증(`sessionIsolation` 옵트인).
+  셀프테스트: run-phase-session(신설, CI 19종째) + phase-gate [D]. 남은 항목: 시행 7 계측(격리 전후
+  점수 분포 대조) 후 신규 프로젝트 기본값을 옵트인 → 기본 활성으로 승격할지 결정.

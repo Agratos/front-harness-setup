@@ -18,6 +18,32 @@ export function artifactMarker(cycleId, phase) {
 }
 
 /**
+ * 세션 지문 마커 — 이 기록을 **어느 세션이** 남겼는지(세션 분리 3단계).
+ * artifactMarker 와 별도 마커인 이유: artifactMarker 는 findPhaseRecord 의 매칭 키라서
+ * 필드를 추가하면 기존 기록이 전부 "없음" 으로 오판된다(하위호환 파괴). 지문은 옆에 따로 찍는다.
+ * @param {string} sessionId run-phase-session 이 발급한 세션 id (env HARNESS_SESSION_ID)
+ */
+export function sessionMarker(sessionId) {
+	return `<!-- harness:session id=${sessionId} -->`;
+}
+
+/**
+ * 이번 (사이클, 페이즈) 기록의 세션 지문을 읽는다 — phase-gate 의 "구현 세션 ≠ 판정 세션" 교차 검증용.
+ * @returns {{found:boolean, file:string|null, sessionId:string|null}} 지문 없는 기록은 sessionId=null
+ */
+export function phaseRecordSession(repoRoot, cycleId, phase) {
+	const { found, file } = findPhaseRecord(repoRoot, cycleId, phase);
+	if (!found) return { found: false, file: null, sessionId: null };
+	try {
+		const text = readFileSync(path.join(repoRoot, file), 'utf8');
+		const m = /<!-- harness:session id=([^\s>]+) -->/.exec(text);
+		return { found: true, file, sessionId: m ? m[1] : null };
+	} catch {
+		return { found: true, file, sessionId: null };
+	}
+}
+
+/**
  * 이번 (사이클, 페이즈) 스탬프가 찍힌 결정 기록을 `harness/decisions/` 에서 찾는다.
  * @returns {{found:boolean, file:string|null}} file 은 repo 상대경로
  */
@@ -42,4 +68,4 @@ export function findPhaseRecord(repoRoot, cycleId, phase) {
 	return { found: false, file: null };
 }
 
-export default { artifactMarker, findPhaseRecord };
+export default { artifactMarker, sessionMarker, findPhaseRecord, phaseRecordSession };
