@@ -58,6 +58,7 @@ jobs:
           node scripts/record-decision.selftest.mjs
           node scripts/eval-review.selftest.mjs
           node scripts/run-phase-session.selftest.mjs
+          node scripts/resume-watch.selftest.mjs
 
       # ── 통합 스모크 데모 (초기 상태에서도 통과해야 함) ────────────────
       - name: Integration demo
